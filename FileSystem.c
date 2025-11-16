@@ -7,10 +7,9 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <errno.h>
-
+#include <sys/stat.h>
 #define block_size 1024
 typedef unsigned int uint ;
-
 
 typedef struct superblock {
   uint version;
@@ -100,6 +99,11 @@ void free_block(int block_num) {
     }
 }
 
+static inline void now_timespec(struct timespec *ts) {
+    // C11 estándar
+    timespec_get(ts, TIME_UTC); // no necesita POSIX ni -lrt
+}
+
 void init_inode(inode *node, uint ino, mode_t mode, uint size) {
     node->inode_number = ino;
     node->inode_mode = mode;
@@ -107,7 +111,8 @@ void init_inode(inode *node, uint ino, mode_t mode, uint size) {
     node->links_quaintities = 1;
     node->user_id = getuid();
     node->group_id = getgid();
-    clock_gettime(CLOCK_REALTIME, &node->last_access_time);
+
+    now_timespec(&node->last_access_time);
     node->last_modification_time = node->last_access_time;
     node->metadata_last_change_time = node->last_access_time;
     memset(node->direct, 0, sizeof(node->direct));
@@ -145,10 +150,8 @@ int main() {
 
     printf("\nCreando un inodo en memoria...\n");
     inode myinode;
-    init_inode(&myinode, 1, S_IFREG | 0644, 512);
-    printf("Inodo %u creado con tamaño %u bytes.\n", myinode.inode_number, myinode.inode_size);
-
-    printf("\nCreando entrada de directorio...\n");
+// Archivo regular + permisos 0644, sin usar S_IFREG
+init_inode(&myinode, 1, 0100000 | 0644, 512);    printf("\nCreando entrada de directorio...\n");
     dir_entry entry;
     init_dir_entry(&entry, 1, "archivo.txt");
     printf("Entrada: %s -> inodo %u\n", entry.name, entry.ino);
