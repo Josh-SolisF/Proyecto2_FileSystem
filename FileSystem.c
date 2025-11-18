@@ -397,7 +397,7 @@ int main() {
 /* ---- mkfs principal ---- */
 int main(int argc, char **argv) {
     const char *folder = (argc >= 2) ? argv[1] : "./qrfolder";
-    u32 block_size   = block_size;
+    u32 block_size   = 1024;
     u32 total_blocks = DEFAULT_TOTAL_BLOCKS;  // <=128
     u32 total_inodes = DEFAULT_TOTAL_INODES;  // <=128
 
