@@ -4,7 +4,9 @@
 #include <time.h>
 
 void initialize_superblock(void);
-void now_timespec(struct timespec *ts);
+static inline void now_timespec(struct timespec *ts) {
+    timespec_get(ts, TIME_UTC);
+}
 void u32le_write(u32 v, unsigned char *p);
 u32 ceil_div(u32 a, u32 b);
 
