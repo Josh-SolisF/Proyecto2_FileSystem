@@ -1,42 +1,144 @@
-// mkfs.c
-#include "fs_basic.h"
-#include "fs_utils.h"
-#include "bitmaps.h"
-#include "inode.h"
-#include "dir.h"
+#include "fs_basic.h"       // Tipos y constantes
+#include "fs_utils.h"       // ceil_div, u32le_write
+#include "block.h"       // ensure_folder, create_zero_block, write_block
+#include "superblock.h"     // write_superblock_with_offsets
+#include "inode.h"          // inode_serialize128
+#include "dir.h"            // build_root_dir_block
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
 
-int main(void) {
-    printf("Inicializando superblock...\n");
-    initialize_superblock();
-    printf("Version: %u, Blocksize: %u, Total inodes: %u, Total blocks: %u\n",
-           spblock.version, spblock.blocksize, spblock.total_inodes, spblock.total_blocks);
+int main(int argc, char **argv) {
+    const char *folder = (argc >= 2) ? argv[1] : "./qrfolder";
+    u32 block_size   = 1024;
+    u32 total_blocks = DEFAULT_TOTAL_BLOCKS;  // <=128
+    u32 total_inodes = DEFAULT_TOTAL_INODES;  // <=128
 
-    printf("\nAsignando un inodo...\n");
-    int inode_id = allocate_inode();
-    printf("Inodo asignado: %d\n", inode_id);
+    // Procesar argumentos opcionales
+    for (int i = 2; i < argc; ++i) {
+        if (strncmp(argv[i], "--blocks=", 9) == 0) {
+            total_blocks = (u32)strtoul(argv[i] + 9, NULL, 10);
+        } else if (strncmp(argv[i], "--inodes=", 9) == 0) {
+            total_inodes = (u32)strtoul(argv[i] + 9, NULL, 10);
+        } else if (strncmp(argv[i], "--blocksize=", 12) == 0) {
+            block_size = (u32)strtoul(argv[i] + 12, NULL, 10);
+        }
+    }
 
-    printf("Liberando el inodo...\n");
-    free_inode(inode_id);
-    printf("Inodo %d liberado.\n", inode_id);
+    // Validaciones
+    if (total_blocks > 128 || total_inodes > 128) {
+        fprintf(stderr, "Por ahora mkfs.qrfs soporta como máximo 128 bloques e inodos.\n");
+        return 2;
+    }
+    if (block_size < 512 || block_size > 65536) {
+        fprintf(stderr, "block_size fuera de rango razonable (512..65536).\n");
+        return 2;
+    }
 
-    printf("\nAsignando un bloque...\n");
-    int blk = allocate_block();
-    printf("Bloque asignado: %d\n", blk);
+    // 1) Crear carpeta y bloques
+    if (ensure_folder(folder) != 0) {
+        fprintf(stderr, "No se pudo preparar la carpeta destino: %s\n", strerror(errno));
+        return 1;
+    }
+    for (u32 i = 0; i < total_blocks; ++i) {
+        if (create_zero_block(folder, i, block_size) != 0) {
+            fprintf(stderr, "No se pudo crear block_%04u.png: %s\n", i, strerror(errno));
+            return 1;
+        }
+    }
 
-    printf("Liberando el bloque...\n");
-    free_block(blk);
-    printf("Bloque %d liberado.\n", blk);
+    // 2) Offsets
+    u32 inode_bitmap_start  = 1;
+    u32 inode_bitmap_blocks = 1;
+    u32 data_bitmap_start   = inode_bitmap_start + inode_bitmap_blocks;
+    u32 data_bitmap_blocks  = 1;
+    u32 inode_table_start   = data_bitmap_start + data_bitmap_blocks;
 
-    printf("\nCreando un inodo en memoria...\n");
-    inode myinode;
-    init_inode(&myinode, 1, 0100000 | 0644, 512);
+    u32 inode_record_size   = 128;
+    u32 inode_table_bytes   = total_inodes * inode_record_size;
+    u32 inode_table_blocks  = ceil_div(inode_table_bytes, block_size);
 
-    printf("\nCreando entrada de directorio...\n");
-    dir_entry entry;
-    init_dir_entry(&entry, 1, "archivo.txt");
-    printf("Entrada: %s -> inodo %u\n", entry.name, entry.inode_id);
+    u32 data_region_start   = inode_table_start + inode_table_blocks;
 
-    printf("\nTodo listo. (Este main no monta FUSE, solo prueba funciones)\n");
+    if (data_region_start >= total_blocks) {
+        fprintf(stderr, "No hay espacio para región de datos.\n");
+        return 1;
+    }
+
+    // 3) Bitmaps
+    unsigned char inode_bitmap[128];
+    unsigned char data_bitmap[128];
+    memset(inode_bitmap, '0', sizeof(inode_bitmap));
+    memset(data_bitmap,  '0', sizeof(data_bitmap));
+
+    u32 root_inode = 0;
+    inode_bitmap[root_inode] = '1';
+
+    data_bitmap[0] = '1'; // SB
+    for (u32 b = inode_bitmap_start; b < inode_bitmap_start + inode_bitmap_blocks; ++b) data_bitmap[b] = '1';
+    for (u32 b = data_bitmap_start;  b < data_bitmap_start + data_bitmap_blocks;  ++b) data_bitmap[b] = '1';
+    for (u32 b = inode_table_start;  b < inode_table_start + inode_table_blocks;  ++b) data_bitmap[b] = '1';
+
+    u32 root_dir_block = data_region_start;
+    data_bitmap[root_dir_block] = '1';
+
+    // 4) Escribir bitmaps
+    if (write_block(folder, inode_bitmap_start, inode_bitmap, block_size) != 0 ||
+        write_block(folder, data_bitmap_start, data_bitmap, block_size) != 0) {
+        fprintf(stderr, "Error escribiendo bitmaps.\n");
+        return 1;
+    }
+
+    // 5) Tabla de inodos (inodo raíz)
+    unsigned char rec[128];
+    u32 direct[12] = {0};
+    direct[0] = root_dir_block;
+    u32 mode_dir = 0040000 | 0755; // S_IFDIR | 0755
+    u32 dir_size = 520;
+
+    inode_serialize128(rec, root_inode, mode_dir, 0, 0, 2, dir_size, direct, 0);
+
+    unsigned char *itbl_block0 = (unsigned char*)calloc(1, block_size);
+    memcpy(itbl_block0, rec, 128);
+    if (write_block(folder, inode_table_start, itbl_block0, block_size) != 0) {
+        fprintf(stderr, "Error escribiendo tabla de inodos.\n");
+        free(itbl_block0);
+        return 1;
+    }
+    free(itbl_block0);
+
+    // 6) Directorio raíz
+    unsigned char *dirblk = (unsigned char*)calloc(1, block_size);
+    build_root_dir_block(dirblk, block_size, root_inode);
+    if (write_block(folder, root_dir_block, dirblk, block_size) != 0) {
+        fprintf(stderr, "Error escribiendo directorio raíz.\n");
+        free(dirblk);
+        return 1;
+    }
+    free(dirblk);
+
+    // 7) Superbloque
+    if (write_superblock_with_offsets(folder, block_size, total_blocks, total_inodes,
+                                      inode_bitmap, data_bitmap, root_inode,
+                                      inode_bitmap_start, inode_bitmap_blocks,
+                                      data_bitmap_start, data_bitmap_blocks,
+                                      inode_table_start, inode_table_blocks,
+                                      data_region_start) != 0) {
+        fprintf(stderr, "Error escribiendo superbloque.\n");
+        return 1;
+    }
+
+    // 8) Reporte
+    printf("QRFS creado en '%s'\n", folder);
+    printf("block_size=%u, total_blocks=%u, total_inodes=%u\n", block_size, total_blocks, total_inodes);
+    printf("Layout:\n");
+    printf("  SB               : block 0\n");
+    printf("  inode_bitmap     : start=%u, blocks=%u\n", inode_bitmap_start, inode_bitmap_blocks);
+    printf("  data_bitmap      : start=%u, blocks=%u\n", data_bitmap_start, data_bitmap_blocks);
+    printf("  inode_table      : start=%u, blocks=%u (record_size=128)\n", inode_table_start, inode_table_blocks);
+    printf("  data_region_start: %u\n", data_region_start);
+    printf("  root inode       : %u  (direct[0]=%u, size=%u)\n", root_inode, root_dir_block, dir_size);
+
     return 0;
 }
