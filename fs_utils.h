@@ -1,6 +1,7 @@
 #ifndef FS_UTILS_H
 #define FS_UTILS_H
 #include "fs_basic.h"
+#include <time.h>
 
 void initialize_superblock(void);
 static inline void now_timespec(struct timespec *ts); // puedes dejarla inline en el .h
