@@ -19,7 +19,7 @@ void init_inode(inode *node, u32 inode_id, mode_t mode, u32 size) {
     node->indirect1 = 0;
 }
 
-static void inode_serialize128(
+ void inode_serialize128(
     unsigned char out[128],
     u32 inode_number, u32 inode_mode, u32 user_id, u32 group_id,
     u32 links, u32 size,

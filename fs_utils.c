@@ -20,15 +20,18 @@ void initialize_superblock(void) {
     spblock.root_inode = 0;
 }
 
+static inline void now_timespec(struct timespec *ts) {
+    timespec_get(ts, TIME_UTC);
+}
 
 
-
-static inline void u32le_write(u32 v, unsigned char *p) {
+void u32le_write(u32 v, unsigned char *p) {
     p[0] = (unsigned char)(v & 0xFF);
     p[1] = (unsigned char)((v >> 8) & 0xFF);
     p[2] = (unsigned char)((v >> 16) & 0xFF);
     p[3] = (unsigned char)((v >> 24) & 0xFF);
 }
 
-
-static inline u32 ceil_div(u32 a, u32 b) { return (a + b - 1) / b; } //preguntar para que es esto
+u32 ceil_div(u32 a, u32 b) {
+    return (a + b - 1) / b;
+}
