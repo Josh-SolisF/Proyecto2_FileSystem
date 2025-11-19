@@ -20,9 +20,7 @@ void initialize_superblock(void) {
     spblock.root_inode = 0;
 }
 
-static inline void now_timespec(struct timespec *ts) {
-    timespec_get(ts, TIME_UTC);
-}
+
 
 
 static inline void u32le_write(u32 v, unsigned char *p) {
