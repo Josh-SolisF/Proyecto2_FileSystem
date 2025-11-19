@@ -2,7 +2,7 @@
 #include "fs_utils.h"
 #include <string.h>
 #include <unistd.h>
-
+#include <time.h>
 void init_inode(inode *node, u32 inode_id, mode_t mode, u32 size) {
     node->inode_number = inode_id;
     node->inode_mode   = mode;
