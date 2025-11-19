@@ -1,9 +1,9 @@
-#include "fs_basic.h"       // Tipos y constantes
-#include "fs_utils.h"       // ceil_div, u32le_write
-#include "block.h"       // ensure_folder, create_zero_block, write_block
-#include "superblock.h"     // write_superblock_with_offsets
-#include "inode.h"          // inode_serialize128
-#include "dir.h"            // build_root_dir_block
+#include "fs_basic.h"
+#include "fs_utils.h"
+#include "block.h"
+#include "superblock.h"
+#include "inode.h"
+#include "dir.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
