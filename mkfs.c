@@ -10,7 +10,7 @@
 #include <string.h>
 #include <errno.h>
 
-int main(int argc, char **argv) {
+int mkfs(int argc, char **argv) {
     const char *folder = (argc >= 2) ? argv[1] : "./qrfolder";
     u32 block_size   = 1024;
     u32 total_blocks = DEFAULT_TOTAL_BLOCKS;  // <=128
@@ -18,16 +18,12 @@ int main(int argc, char **argv) {
 
     // Procesar argumentos opcionales
     for (int i = 2; i < argc; ++i) {
-        if (strncmp(argv[i], "--blocks=", 9) == 0) {
-            total_blocks = (u32)strtoul(argv[i] + 9, NULL, 10);
-        } else if (strncmp(argv[i], "--inodes=", 9) == 0) {
-            total_inodes = (u32)strtoul(argv[i] + 9, NULL, 10);
-        } else if (strncmp(argv[i], "--blocksize=", 12) == 0) {
-            block_size = (u32)strtoul(argv[i] + 12, NULL, 10);
-        }
+        if (strncmp(argv[i], "--blocks=", 9) == 0) {total_blocks = (u32)strtoul(argv[i] + 9, NULL, 10);}
+        else if (strncmp(argv[i], "--inodes=", 9) == 0) {total_inodes = (u32)strtoul(argv[i] + 9, NULL, 10);}
+        else if (strncmp(argv[i], "--blocksize=", 12) == 0) {block_size = (u32)strtoul(argv[i] + 12, NULL, 10);}
     }
 
-    // Validaciones
+    // Esto lo podemos quitar si el profe quieremás
     if (total_blocks > 128 || total_inodes > 128) {
         fprintf(stderr, "Por ahora mkfs.qrfs soporta como máximo 128 bloques e inodos.\n");
         return 2;
@@ -37,7 +33,7 @@ int main(int argc, char **argv) {
         return 2;
     }
 
-    // 1) Crear carpeta y bloques
+    //  Crear carpeta y bloques
     if (ensure_folder(folder) != 0) {
         fprintf(stderr, "No se pudo preparar la carpeta destino: %s\n", strerror(errno));
         return 1;
@@ -49,7 +45,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    // 2) Offsets
+    // Offsets
     u32 inode_bitmap_start  = 1;
     u32 inode_bitmap_blocks = 1;
     u32 data_bitmap_start   = inode_bitmap_start + inode_bitmap_blocks;
@@ -67,7 +63,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // 3) Bitmaps
+    // Bitmaps
     unsigned char inode_bitmap[128];
     unsigned char data_bitmap[128];
     memset(inode_bitmap, '0', sizeof(inode_bitmap));
@@ -84,14 +80,14 @@ int main(int argc, char **argv) {
     u32 root_dir_block = data_region_start;
     data_bitmap[root_dir_block] = '1';
 
-    // 4) Escribir bitmaps
+    // Escribir bitmaps
     if (write_block(folder, inode_bitmap_start, inode_bitmap, block_size) != 0 ||
         write_block(folder, data_bitmap_start, data_bitmap, block_size) != 0) {
         fprintf(stderr, "Error escribiendo bitmaps.\n");
         return 1;
     }
 
-    // 5) Tabla de inodos (inodo raíz)
+    //  Tabla de inodos (inodo raíz)
     unsigned char rec[128];
     u32 direct[12] = {0};
     direct[0] = root_dir_block;
@@ -109,7 +105,7 @@ int main(int argc, char **argv) {
     }
     free(itbl_block0);
 
-    // 6) Directorio raíz
+    // Directorio raíz
     unsigned char *dirblk = (unsigned char*)calloc(1, block_size);
     build_root_dir_block(dirblk, block_size, root_inode);
     if (write_block(folder, root_dir_block, dirblk, block_size) != 0) {
@@ -119,7 +115,7 @@ int main(int argc, char **argv) {
     }
     free(dirblk);
 
-    // 7) Superbloque
+    // Superbloque
     if (write_superblock_with_offsets(folder, block_size, total_blocks, total_inodes,
                                       inode_bitmap, data_bitmap, root_inode,
                                       inode_bitmap_start, inode_bitmap_blocks,
@@ -130,7 +126,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // 8) Reporte
+    //Reporte
     printf("QRFS creado en '%s'\n", folder);
     printf("block_size=%u, total_blocks=%u, total_inodes=%u\n", block_size, total_blocks, total_inodes);
     printf("Layout:\n");
@@ -142,4 +138,82 @@ int main(int argc, char **argv) {
     printf("  root inode       : %u  (direct[0]=%u, size=%u)\n", root_inode, root_dir_block, dir_size);
 
     return 0;
+}
+
+
+
+int fsck_qrfs(const char *folder) {
+    u32 version, total_blocks, total_inodes;
+    unsigned char inode_bitmap[128], data_bitmap[128];
+    u32 root_inode;
+    u32 ib_start, ib_blocks, db_start, db_blocks, it_start, it_blocks, data_start;
+
+    // Leer superbloque
+    if (read_superblock(folder, 1024, &version, &total_blocks, &total_inodes,
+                        inode_bitmap, data_bitmap, &root_inode,
+                        &ib_start, &ib_blocks, &db_start, &db_blocks,
+                        &it_start, &it_blocks, &data_start) != 0) {
+        fprintf(stderr, "Error: superbloque inválido.\n");
+        return 1;
+    }
+
+    printf("Superbloque OK: version=%u, blocks=%u, inodes=%u\n", version, total_blocks, total_inodes);
+
+    // Validar layout
+    if (ib_start + ib_blocks > total_blocks ||
+        db_start + db_blocks > total_blocks ||
+        it_start + it_blocks > total_blocks ||
+        data_start >= total_blocks) {
+        fprintf(stderr, "Error: layout inconsistente.\n");
+        return 1;
+    }
+
+    // Leer tabla de inodos (primer bloque)
+    unsigned char buf[1024];
+    if (read_block(folder, it_start, buf, 1024) != 0) {
+        fprintf(stderr, "Error leyendo tabla de inodos.\n");
+        return 1;
+    }
+
+    // Extraer inodo raíz
+    unsigned char in[128];
+    memcpy(in, buf, 128);
+
+    u32 inode_number, inode_mode, user_id, group_id, links, size, indirect1;
+    u32 direct[12];
+    //deserializar los inodos
+    inode_deserialize128(in, &inode_number, &inode_mode, &user_id, &group_id,
+                         &links, &size, direct, &indirect1);
+
+    printf("Inodo raíz: inode=%u, mode=%o, size=%u, links=%u\n",
+           inode_number, inode_mode, size, links);
+
+    if ((inode_mode & 0040000) == 0) {
+        fprintf(stderr, "Error: inodo raíz no es directorio.\n");
+        return 1;
+    }
+    if (links != 2) {
+        fprintf(stderr, "Advertencia: inodo raíz links=%u (esperado 2).\n", links);
+    }
+
+    // Leer bloque del directorio raíz
+    unsigned char dirbuf[1024];
+    if (read_block(folder, direct[0], dirbuf, 1024) != 0) {
+        fprintf(stderr, "Error leyendo bloque del directorio raíz.\n");
+        return 1;
+    }
+
+    list_directory_block(dirbuf, 1024);
+
+    printf("Chequeo completado: QRFS parece consistente.\n");
+    return 0;
+}
+
+// main para fsck.qrfs
+int main(int argc, char **argv) {
+    if (argc < 2) {
+        fprintf(stderr, "Uso: fsck.qrfs <carpeta>\n");
+        return 1;
+    }
+    return fsck_qrfs(argv[1]);
 }

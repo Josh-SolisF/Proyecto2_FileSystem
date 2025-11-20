@@ -19,12 +19,8 @@ void init_inode(inode *node, u32 inode_id, mode_t mode, u32 size) {
     node->indirect1 = 0;
 }
 
- void inode_serialize128(
-    unsigned char out[128],
-    u32 inode_number, u32 inode_mode, u32 user_id, u32 group_id,
-    u32 links, u32 size,
-    const u32 direct[12], u32 indirect1
-) {
+ void inode_serialize128(unsigned char out[128],u32 inode_number, u32 inode_mode, u32 user_id, u32 group_id,
+    u32 links, u32 size,const u32 direct[12], u32 indirect1) {
     memset(out, 0, 128);
     u32le_write(inode_number, &out[0]);
     u32le_write(inode_mode,   &out[4]);
@@ -36,10 +32,30 @@ void init_inode(inode *node, u32 inode_id, mode_t mode, u32 size) {
     u32le_write(indirect1,    &out[72]);
 }
 
-/* ---- Directorio en disco (bloque de 1024):
- * Usamos entradas fijas tipo (u32 inode_id + 256 bytes name) = 260 bytes c/u.
- * Dos entradas: "." y ".." ocupan 520 bytes.
- */
+
+void inode_deserialize128(const unsigned char in[128],u32 *inode_number, u32 *inode_mode, u32 *user_id, u32 *group_id,
+    u32 *links, u32 *size,u32 direct[12], u32 *indirect1) {
+    *inode_number = u32le_read(&in[0]);
+    *inode_mode   = u32le_read(&in[4]);
+    *user_id      = u32le_read(&in[8]);
+    *group_id     = u32le_read(&in[12]);
+    *links        = u32le_read(&in[16]);
+    *size         = u32le_read(&in[20]);
+
+    for (int i = 0; i < 12; i++) {
+        direct[i] = u32le_read(&in[24 + i * 4]);
+    }
+
+    *indirect1 = u32le_read(&in[72]);
+}
+
+
+//Esto es estatico, estamos usando la pública asi que se puede borrar, esta en dir.c
+
+
+/*
+// Usamos entradas fijas tipo (u32 inode_id + 256 bytes name) = 260 bytes c/u.
+
 static void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) {
     memset(block, 0, block_size);
     // entrada "."
@@ -52,3 +68,5 @@ static void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_
     strncpy((char*)&block[268], dotdot, 256);
     // resto queda en cero
 }
+
+ */

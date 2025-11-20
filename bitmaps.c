@@ -1,4 +1,3 @@
-// bitmaps.c
 #include "fs_basic.h"
 
 int allocate_inode(void) {

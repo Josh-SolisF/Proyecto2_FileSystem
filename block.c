@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 
-/* Crea la carpeta si no existe */
+
 int ensure_folder(const char *folder) {
     struct stat st;
     if (stat(folder, &st) == 0) {
@@ -19,8 +19,7 @@ int ensure_folder(const char *folder) {
     (void)rc; // ignoramos el código de retorno
     return 0;
 }
-
-/* Crea un bloque vacío (relleno con ceros) */
+//Bloque nulo
 int create_zero_block(const char *folder, u32 index, u32 block_size) {
     char path[512];
     snprintf(path, sizeof(path), "%s/block_%04u.png", folder, index);
@@ -40,7 +39,7 @@ int create_zero_block(const char *folder, u32 index, u32 block_size) {
     return (w == block_size) ? 0 : -1;
 }
 
-/* Escribe datos en un bloque existente */
+// Escribe datos
 int write_block(const char *folder, u32 index, const void *buf, u32 len) {
     char path[512];
     snprintf(path, sizeof(path), "%s/block_%04u.png", folder, index);
@@ -53,16 +52,28 @@ int write_block(const char *folder, u32 index, const void *buf, u32 len) {
     return (w == len) ? 0 : -1;
 }
 
-/* Lee datos desde un bloque */
-int read_block(const char *folder, u32 index, void *buf, u32 len) {
-    char path[512];
-    snprintf(path, sizeof(path), "%s/block_%04u.png", folder, index);
-    FILE *fp = fopen(path, "rb");
-    if (!fp) return -1;
+//Lee datos de un bloque
 
-    fseek(fp, 0, SEEK_SET);
-    size_t r = fread(buf, 1, len, fp);
+int read_block(const char *folder, u32 block_index, unsigned char *buf, u32 block_size) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/block_%04u.png", folder, block_index);
+
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        fprintf(stderr, "Error abriendo bloque %u: %s\n", block_index, strerror(errno));
+        return -1;
+    }
+
+    size_t r = fread(buf, 1, block_size, fp);
     fclose(fp);
-    return (r == len) ? 0 : -1;
+
+    if (r != block_size) {
+        fprintf(stderr, "Error leyendo bloque %u (bytes leídos=%zu, esperado=%u)\n",
+                block_index, r, block_size);
+        return -1;
+    }
+
+    return 0;
 }
+
 
