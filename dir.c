@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 
 void init_dir_entry(dir_entry *entry, u32 inode_id, const char *name) {
     entry->inode_id = inode_id;
