@@ -203,8 +203,9 @@ int fsck_qrfs(const char *folder) {
         return 1;
     }
 
-    list_directory_block(dirbuf, 1024);
+	u32 root_dir_block = direct[0]; // El bloque del directorio raíz viene del inodo raíz
 
+	list_directory_block(folder, 1024, root_dir_block);
     printf("Chequeo completado: QRFS parece consistente.\n");
     return 0;
 }
