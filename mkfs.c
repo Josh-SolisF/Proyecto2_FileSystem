@@ -210,22 +210,12 @@ int fsck_qrfs(const char *folder) {
     return 0;
 }
 
+
 int main(int argc, char **argv) {
     if (argc < 2) {
-        fprintf(stderr, "Uso: %s <mkfs|fsck> [args...]\n", argv[0]);
+        fprintf(stderr, "Uso: %s <carpeta>\n", argv[0]);
         return 1;
     }
 
-    if (strcmp(argv[1], "mkfs") == 0) {
-        return mkfs(argc - 1, argv + 1); // pasa args a mkfs
-    } else if (strcmp(argv[1], "fsck") == 0) {
-        if (argc < 3) {
-            fprintf(stderr, "Uso: %s fsck <carpeta>\n", argv[0]);
-            return 1;
-        }
-        return fsck_qrfs(argv[2]);
-    } else {
-        fprintf(stderr, "Comando desconocido: %s\n", argv[1]);
-        return 1;
-    }
+    return fsck_qrfs(argv[1]);
 }
