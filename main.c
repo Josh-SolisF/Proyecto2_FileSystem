@@ -29,3 +29,14 @@ int main(int argc, char *argv[]) {
 
     return fuse_main(argc, argv, &qrfs_ops, NULL);
 }
+
+/*
+ *
+*
+gcc -Wall -Wextra -D_FILE_OFFSET_BITS=64 `pkg-config fuse3 --cflags` \
+  -o programa \
+  bitmaps.c block.c dir.c fs_utils.c inode.c superblock.c mkfs.c main.c fuse_functions.c \
+  `pkg-config fuse3 --libs`
+
+ *
+ **/

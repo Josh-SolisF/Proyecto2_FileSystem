@@ -5,7 +5,9 @@
 #include <errno.h>
 #include <fcntl.h>
 
-int qrfs_getattr(const char *path, struct stat *stbuf) {
+
+int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) {
+    (void) fi; // evita warning si no lo usas
     memset(stbuf, 0, sizeof(struct stat));
     if (strcmp(path, "/") == 0) {
         stbuf->st_mode = S_IFDIR | 0755;
@@ -13,10 +15,11 @@ int qrfs_getattr(const char *path, struct stat *stbuf) {
     } else {
         stbuf->st_mode = S_IFREG | 0644;
         stbuf->st_nlink = 1;
-        stbuf->st_size = 1024; // tamaño simulado
+        stbuf->st_size = 1024;
     }
     return 0;
 }
+
 
 int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
     printf("Crear archivo: %s\n", path);
@@ -46,10 +49,13 @@ int qrfs_write(const char *path, const char *buf, size_t size, off_t offset, str
     return size;
 }
 
-int qrfs_rename(const char *from, const char *to) {
+
+int qrfs_rename(const char *from, const char *to, unsigned int flags) {
+    (void) flags; // si no lo usas
     printf("Renombrar: %s -> %s\n", from, to);
     return 0;
 }
+
 
 // Estructura global con operaciones
 struct fuse_operations qrfs_ops = {
