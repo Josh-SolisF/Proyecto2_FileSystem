@@ -41,6 +41,9 @@ typedef struct dir_entry {
     char name[256];
 } dir_entry;
 
+
+
+
 //global
 extern superblock spblock;
 

@@ -211,11 +211,3 @@ int fsck_qrfs(const char *folder) {
 }
 
 
-int main(int argc, char **argv) {
-    if (argc < 2) {
-        fprintf(stderr, "Uso: %s <carpeta>\n", argv[0]);
-        return 1;
-    }
-
-    return fsck_qrfs(argv[1]);
-}
