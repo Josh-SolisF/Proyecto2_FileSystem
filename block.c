@@ -77,3 +77,18 @@ int read_block(const char *folder, u32 block_index, unsigned char *buf, u32 bloc
 }
 
 
+int read_inode_block(const char *folder, u32 inode_id, unsigned char *buf, u32 block_size) {
+    u32 inodes_per_block = block_size / 128;
+    u32 block_index = inode_id / inodes_per_block;
+    u32 offset = (inode_id % inodes_per_block) * 128;
+
+    unsigned char block[4096];
+    if (read_block(folder, block_index, block, block_size) != 0) {
+        return -1;
+    }
+
+    memcpy(buf, block + offset, 128);
+    return 0;
+}
+
+

@@ -1,11 +1,16 @@
 
 #include "fs_basic.h"
 #include "fs_utils.h"
+#include "inode.h"
+#include "block.h"
 
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+
+
+#define ROOT_INODE 0
 
 void init_dir_entry(dir_entry *entry, u32 inode_id, const char *name) {
     entry->inode_id = inode_id;
@@ -20,6 +25,61 @@ void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) 
     u32le_write(root_inode, &block[264]); //inode en offset 264
     strncpy((char*)&block[268], "..", 256); //nonmbre de 256 en la posicion 268
 }
+
+
+
+u32 search_inode_by_path(const char *folder, const char *path, u32 block_size) {
+    if (strcmp(path, "/") == 0) return ROOT_INODE;
+
+    char temp[256];
+    strncpy(temp, path, sizeof(temp));
+    temp[sizeof(temp)-1] = '\0';
+
+    char *token = strtok(temp, "/");
+    u32 current_inode = ROOT_INODE;
+
+    while (token) {
+        unsigned char raw[128];
+        if (read_inode_block(folder, current_inode, raw, block_size) != 0) {
+            return (u32)-ENOENT;
+        }
+
+        u32 inode_number, inode_mode, size;
+        u32 direct[12], indirect1;
+        inode_deserialize128(raw, &inode_number, &inode_mode, NULL, NULL, NULL, &size, direct, &indirect1);
+
+        if (!(inode_mode & S_IFDIR)) {
+            return (u32)-ENOENT; // Not a directory
+        }
+
+        int found = 0;
+        for (int i = 0; i < 12 && direct[i] != 0; i++) {
+            unsigned char block[4096];
+            if (read_block(folder, direct[i], block, block_size) != 0) {
+                return (u32)-ENOENT;
+            }
+
+            dir_entry *entries = (dir_entry *)block;
+            int num_entries = block_size / sizeof(dir_entry);
+
+            for (int j = 0; j < num_entries; j++) {
+                if (strcmp(entries[j].name, token) == 0) {
+                    current_inode = entries[j].inode_id;
+                    found = 1;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+
+        if (!found) return (u32)-ENOENT;
+
+        token = strtok(NULL, "/");
+    }
+
+    return current_inode;
+}
+
 
 
 void list_directory_block(const char *folder, u32 block_size, u32 dir_block_index) {

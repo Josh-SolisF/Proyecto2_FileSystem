@@ -6,19 +6,41 @@
 #include <fcntl.h>
 
 
+
 int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) {
-    (void) fi; // evita warning si no lo usas
+    (void) fi; // not used
     memset(stbuf, 0, sizeof(struct stat));
-    if (strcmp(path, "/") == 0) {
-        stbuf->st_mode = S_IFDIR | 0755;
-        stbuf->st_nlink = 2;
-    } else {
-        stbuf->st_mode = S_IFREG | 0644;
-        stbuf->st_nlink = 1;
-        stbuf->st_size = 1024;
+
+    // Recuperar contexto (folder y block_size)
+    qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
+
+    // Buscar el inodo correspondiente al path
+    u32 inode_id = search_inode_by_path(ctx->folder, path, ctx->block_size);
+    if ((int)inode_id < 0) {
+        return -ENOENT; // Path not found
     }
+
+    // Leer el inodo desde disco
+    unsigned char raw[128];
+    if (read_inode_block(ctx->folder, inode_id, raw, ctx->block_size) != 0) {
+        return -EIO; // I/O error
+    }
+
+    // Deserializar atributos del inodo
+    u32 ino, mode, uid, gid, links, size, direct[12], ind1;
+    inode_deserialize128(raw, &ino, &mode, &uid, &gid, &links, &size, direct, &ind1);
+
+    // Llenar struct stat
+    stbuf->st_mode  = mode;      // Contiene S_IFDIR o S_IFREG + permisos
+    stbuf->st_uid   = uid;       // Usuario propietario
+    stbuf->st_gid   = gid;       // Grupo propietario
+    stbuf->st_nlink = links;     // Número de enlaces
+    stbuf->st_size  = size;      // Tamaño del archivo
+
+
     return 0;
 }
+
 
 
 int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
