@@ -15,6 +15,8 @@
 
 #include "fs_basic.h"
 #include "superblock.h"
+#include "fs_utils.h"
+
 #include "block.h"
 #include "inode.h"
 #include "dir.h"
