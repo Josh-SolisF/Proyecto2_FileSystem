@@ -13,7 +13,10 @@
 #include <unistd.h>
 
 #include <errno.h>
+
+#define FUSE_USE_VERSION 30
 #include <fuse3/fuse.h>
+
 
 
 int mkfs(int argc, char **argv) {

@@ -1,4 +1,7 @@
 
+#define FUSE_USE_VERSION 30
+#include <fuse3/fuse.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,7 +12,6 @@
 
 #include <unistd.h>    // access(), etc.
 
-#include <fuse3/fuse.h>
 
 #include "fuse_functions.h"
 
