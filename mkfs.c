@@ -1,5 +1,3 @@
-
-
 #define _POSIX_C_SOURCE 200809L
 #define FUSE_USE_VERSION 31
 
