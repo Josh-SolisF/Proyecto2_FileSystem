@@ -223,40 +223,48 @@ int fsck_qrfs(const char *folder) {
 
 
 
-
 int mount_qrfs(int argc, char **argv) {
     if (argc < 4) {
         fprintf(stderr, "Uso: %s --mount <backend_folder> <mount_point>\n", argv[0]);
         return 1;
     }
 
-    const char *backend_folder = argv[2];
-    const char *mount_point    = argv[3];
-
-    struct stat st;
-    if (stat(mount_point, &st) != 0 || !S_ISDIR(st.st_mode)) {
-        fprintf(stderr, "Mount point '%s' no existe o no es un directorio.\n", mount_point);
+    char backend_abs[PATH_MAX];
+    if (!realpath(argv[2], backend_abs)) {
+        perror("No pude resolver ruta absoluta del backend_folder");
         return 1;
     }
-    if (access(mount_point, W_OK) != 0) {
+
+    char mount_abs[PATH_MAX];
+    if (!realpath(argv[3], mount_abs)) {
+        perror("No pude resolver ruta absoluta del mount_point");
+        return 1;
+    }
+
+    struct stat st;
+    if (stat(mount_abs, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "Mount point '%s' no existe o no es un directorio.\n", mount_abs);
+        return 1;
+    }
+    if (access(mount_abs, W_OK) != 0) {
         perror("No tengo permiso de escritura sobre el mountpoint");
         return 1;
     }
 
     qrfs_ctx ctx = (qrfs_ctx){0};
-    ctx.folder     = backend_folder;
+    ctx.folder     = strdup(backend_abs); // guarda copia estable
     ctx.block_size = 1024;
 
-    // **Minimal fuse3**: programa, opciones, mountpoint al final
-    char *fuse_argv[] = { "qrfs", "-f", (char *)mount_point };
+    char *fuse_argv[] = { "qrfs", "-f", mount_abs };
     int   fuse_argc   = sizeof(fuse_argv)/sizeof(fuse_argv[0]);
 
-    // Depura qué se pasa a FUSE
     for (int i = 0; i < fuse_argc; ++i) {
         fprintf(stderr, "fuse_argv[%d] = '%s'\n", i, fuse_argv[i]);
     }
+    fprintf(stderr, "backend_folder = '%s'\n", ctx.folder);
 
     return fuse_main(fuse_argc, fuse_argv, &qrfs_ops, &ctx);
 }
+
 
 

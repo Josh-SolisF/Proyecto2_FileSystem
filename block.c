@@ -54,13 +54,16 @@ int write_block(const char *folder, u32 index, const void *buf, u32 len) {
 
 //Lee datos de un bloque
 
+
 int read_block(const char *folder, u32 block_index, unsigned char *buf, u32 block_size) {
     char path[512];
     snprintf(path, sizeof(path), "%s/block_%04u.png", folder, block_index);
 
+    fprintf(stderr, "[read_block] path='%s'\n", path);
+
     FILE *fp = fopen(path, "rb");
     if (!fp) {
-        fprintf(stderr, "Error abriendo bloque %u: %s\n", block_index, strerror(errno));
+        fprintf(stderr, "Error abriendo bloque %u: %s (errno=%d)\n", block_index, strerror(errno), errno);
         return -1;
     }
 
@@ -72,9 +75,9 @@ int read_block(const char *folder, u32 block_index, unsigned char *buf, u32 bloc
                 block_index, r, block_size);
         return -1;
     }
-
     return 0;
 }
+
 
 
 int read_inode_block(const char *folder, u32 inode_id, unsigned char *buf, u32 block_size) {
