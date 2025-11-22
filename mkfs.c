@@ -1,30 +1,25 @@
 #define _POSIX_C_SOURCE 200809L
 #define FUSE_USE_VERSION 31
 
+
+#define _DEFAULT_SOURCE           // o, alternativamente: #define _XOPEN_SOURCE 700
+
 #include <stdio.h>
-#include <stdlib.h>
+#include <stdlib.h>               // realpath
 #include <string.h>
-#include <limits.h>
+#include <limits.h>               // PATH_MAX
 #include <unistd.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <fuse3/fuse.h>
+
 #include "fs_basic.h"
 #include "superblock.h"
 #include "block.h"
 #include "inode.h"
 #include "dir.h"
 #include "fuse_functions.h" // donde está qrfs_ctx y qrfs_ops
-#include <stdlib.h>
-#include <limits.h>
 
-#ifndef S_ISDIR
-#define S_ISDIR(m) (((m) & 0170000) == 0040000)
-#endif
-#include "fs_utils.h"
-
-#include <stdlib.h>   // realpath()
-#include <limits.h>   // PATH_MAX
 
 
 
