@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
         return mkfs(argc, argv);
     }
     if (argc > 1 && strcmp(argv[1], "--mount") == 0) {
-        return mount_qrfs(argc, argv);
+        return mount_qrfs(argc,  **argv) ;
     }
 
     fprintf(stderr, "Uso: %s --mkfs <folder> | --fsck <folder> | --mount <backend_folder> <mount_point>\n", argv[0]);
