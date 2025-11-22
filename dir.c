@@ -4,7 +4,7 @@
 #include "inode.h"
 #include "block.h"
 #include "fuse_functions.h"
-
+#include <limits.h>
 
 #include <string.h>
 #include <stdio.h>

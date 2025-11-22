@@ -316,12 +316,9 @@ int mount_qrfs(int argc, char **argv) {
 
     // Leer inodo raíz
     unsigned char in128[128];
-    rc = read_inode_block(ctx->folder,
-                          ctx->root_inode,
-                          in128,
-                          ctx->block_size,
-                          ctx->inode_table_start,
-                          ctx->total_inodes);
+
+rc = read_inode_block(ctx, ctx->root_inode, in128);
+
     if (rc != 0) {
         fprintf(stderr, "[mount] Falló read_inode_block(root=%u).\n", ctx->root_inode);
         free(ctx->folder);

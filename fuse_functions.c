@@ -31,10 +31,12 @@ int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi
     }
 
     // Buscar el inodo correspondiente al path
-    u32 inode_id = search_inode_by_path(ctx->folder, path, ctx->block_size);
-    if ((int)inode_id < 0) {
-        return -ENOENT; // Path not found
-    }
+
+u32 inode_id;
+if (search_inode_by_path(ctx, path, &inode_id) != 0) {
+    return -ENOENT;
+}
+
 
     // Leer el inodo desde disco
 
@@ -147,13 +149,13 @@ int qrfs_open(const char *path, struct fuse_file_info *fi) {
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
 
     // Buscar inodo por path
-    u32 inode_id = search_inode_by_path(ctx->folder, path, ctx->block_size);
-    if ((int)inode_id < 0) {
-        return -ENOENT; // Archivo no existe
-    }
 
-    // Guardar inode_id en file handle para usar en read
-    fi->fh = inode_id;
+u32 inode_id;
+if (search_inode_by_path(ctx, path, &inode_id) != 0) {
+    return -ENOENT;
+}
+fi->fh = inode_id;
+
 
     return 0; // Éxito
 }
@@ -295,10 +297,12 @@ int qrfs_rename(const char *from, const char *to, unsigned int flags) {
     u32 block_size = ctx->block_size;
 
     //Buscar inodo del archivo origen
-    u32 inode_id = search_inode_by_path(folder, from, block_size);
-    if ((int)inode_id < 0) {
-        return -ENOENT;
-    }
+
+u32 inode_id;
+if (search_inode_by_path(ctx, from, &inode_id) != 0) {
+    return -ENOENT;
+}
+
 
     //Parsear paths
     char from_copy[512], to_copy[512];
