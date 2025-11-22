@@ -8,7 +8,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <errno.h>
+#include <fuse3/fuse.h>
+
 
 int mkfs(int argc, char **argv) {
 const char *folder = (argc >= 3) ? argv[2] : "./qrfolder";
@@ -222,25 +228,42 @@ int mount_qrfs(int argc, char **argv) {
     const char *backend_folder = argv[2];
     const char *mount_point    = argv[3];
 
-    // (Opcional pero recomendado) Validar mount_point existe y es dir
     struct stat st;
     if (stat(mount_point, &st) != 0 || !S_ISDIR(st.st_mode)) {
         fprintf(stderr, "Mount point '%s' no existe o no es un directorio.\n", mount_point);
         return 1;
     }
 
-    // Leer superbloque, inicializar contexto...
     qrfs_ctx ctx = {0};
     ctx.folder     = backend_folder;
     ctx.block_size = 1024;
 
-    // Opciones primero; mountpoint al final
-    // -f = foreground; -s = single-thread (útil para depurar); -d = debug
-    char *fuse_argv[] = { "qrfs", "-f", "-s", "-d", "-o", "fsname=qrfs", (char *)mount_point };
-    int   fuse_argc   = sizeof(fuse_argv) / sizeof(fuse_argv[0]);
+    // Construye args y deja que FUSE los parsee
+    char *fuse_argv[] = { "qrfs", "-f", "-s", "-d", "-o", "fsname=qrfs", (char*)mount_point };
+    int   fuse_argc   = sizeof(fuse_argv)/sizeof(fuse_argv[0]);
 
-    return fuse_main(fuse_argc, fuse_argv, &qrfs_ops, &ctx);
+    struct fuse_args args = FUSE_ARGS_INIT(fuse_argc, fuse_argv);
+
+    // (Opcional) FUSE puede decidir mountpoint y flags.
+    char *mp_out = NULL;
+    int foreground, multithread;
+
+    if (fuse_parse_cmdline(&args, &mp_out, &foreground, &multithread) != 0) {
+        fprintf(stderr, "Error parseando línea de comandos de FUSE.\n");
+        fuse_opt_free_args(&args);
+        return 1;
+    }
+
+    // Si FUSE detectó mountpoint, úsalo; si no, usa el tuyo
+    if (!mp_out) mp_out = (char *)mount_point;
+
+    // Chequeo defensivo
+    if (strcmp(mp_out, mount_point) != 0) {
+        fprintf(stderr, "Aviso: FUSE cambió mountpoint a '%s'\n", mp_out);
+    }
+
+    int ret = fuse_main(args.argc, args.argv, &qrfs_ops, &ctx);
+    fuse_opt_free_args(&args);
+    return ret;
 }
-
-
 

@@ -12,6 +12,7 @@
 #include "dir.h"            // Para search_inode_by_path (o fs_utils.h si la pusiste ahí)
 #include "bitmaps.h"
 #include "fs_utils.h"
+#include <sys/stat.h>
 
 int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) {
     (void) fi; // not used
