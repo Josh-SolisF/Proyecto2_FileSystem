@@ -3,6 +3,8 @@
 #include "fs_utils.h"
 #include "inode.h"
 #include "block.h"
+#include "fuse_functions.h"
+
 
 #include <string.h>
 #include <stdio.h>
@@ -28,43 +30,54 @@ void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) 
 
 
 
-u32 search_inode_by_path(const char *folder, const char *path, u32 block_size) {
-    if (strcmp(path, "/") == 0) return ROOT_INODE;
+int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
+    if (!ctx || !path || !inode_id_out) return -EINVAL;
 
-    char temp[256];
-    strncpy(temp, path, sizeof(temp));
-    temp[sizeof(temp)-1] = '\0';
+    // Si el path es "/" devolvemos el inodo raíz
+    if (strcmp(path, "/") == 0) {
+        *inode_id_out = ctx->root_inode;
+        return 0;
+    }
 
-    char *token = strtok(temp, "/");
-    u32 current_inode = ROOT_INODE;
+    // Copiar path y tokenizar
+    char tmp[PATH_MAX];
+    strncpy(tmp, path, sizeof(tmp));
+    tmp[sizeof(tmp)-1] = '\0';
+
+    char *token = strtok(tmp, "/");
+    u32 current_inode = ctx->root_inode;
 
     while (token) {
-        unsigned char raw[128];
-        if (read_inode_block(folder, current_inode, raw, block_size) != 0) {
-            return (u32)-ENOENT;
+        // Leer inodo actual
+        unsigned char in128[128];
+        if (read_inode_block(ctx, current_inode, in128) != 0) {
+            return -ENOENT;
         }
 
-        u32 inode_number, inode_mode, size;
-        u32 direct[12], indirect1;
-        inode_deserialize128(raw, &inode_number, &inode_mode, NULL, NULL, NULL, &size, direct, &indirect1);
+        // Deserializar inodo
+        u32 inode_number, mode, uid, gid, links, size, direct[12], indirect1;
+        inode_deserialize128(in128, &inode_number, &mode, &uid, &gid,
+                              &links, &size, direct, &indirect1);
 
-        if (!(inode_mode & S_IFDIR)) {
-            return (u32)-ENOENT; // Not a directory
+        if (!S_ISDIR(mode)) {
+            return -ENOTDIR; // No es directorio
         }
 
+        // Buscar token en las entradas del directorio
         int found = 0;
         for (int i = 0; i < 12 && direct[i] != 0; i++) {
             unsigned char block[4096];
-            if (read_block(folder, direct[i], block, block_size) != 0) {
-                return (u32)-ENOENT;
+            if (read_block(ctx->folder, direct[i], block, ctx->block_size) != 0) {
+                return -EIO;
             }
 
-            dir_entry *entries = (dir_entry *)block;
-            int num_entries = block_size / sizeof(dir_entry);
+            size_t entries = ctx->block_size / sizeof(dir_entry);
+            dir_entry *entries_ptr = (dir_entry *)block;
 
-            for (int j = 0; j < num_entries; j++) {
-                if (strcmp(entries[j].name, token) == 0) {
-                    current_inode = entries[j].inode_id;
+            for (size_t j = 0; j < entries; j++) {
+                if (entries_ptr[j].inode_id != 0 &&
+                    strcmp(entries_ptr[j].name, token) == 0) {
+                    current_inode = entries_ptr[j].inode_id;
                     found = 1;
                     break;
                 }
@@ -72,13 +85,17 @@ u32 search_inode_by_path(const char *folder, const char *path, u32 block_size) {
             if (found) break;
         }
 
-        if (!found) return (u32)-ENOENT;
+        if (!found) {
+            return -ENOENT; // No se encontró el componente
+        }
 
         token = strtok(NULL, "/");
     }
 
-    return current_inode;
+    *inode_id_out = current_inode;
+    return 0;
 }
+
 
 
 
