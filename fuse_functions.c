@@ -369,10 +369,34 @@ if (search_inode_by_path(ctx, from, &inode_id) != 0) {
 
 
 
+int qrfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+                 off_t offset, struct fuse_file_info *fi,
+                 enum fuse_readdir_flags flags)
+{
+    (void)offset; (void)fi; (void)flags;
+
+    // Sólo soportamos el root por ahora
+    if (strcmp(path, "/") != 0)
+        return -ENOENT;
+
+    // Siempre "." y ".."
+    filler(buf, ".",  NULL, 0, 0);
+    filler(buf, "..", NULL, 0, 0);
+
+    // Entrada de prueba para confirmar que ls funciona:
+    filler(buf, "README.txt", NULL, 0, 0);
+
+    return 0;
+}
+
+
 // Estructura global con operaciones
 struct fuse_operations qrfs_ops = {
     .getattr = qrfs_getattr,
     .create  = qrfs_create,
+
+    .readdir = qrfs_readdir,
+
     .open    = qrfs_open,
     .read    = qrfs_read,
     .write   = qrfs_write,
