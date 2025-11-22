@@ -1,4 +1,6 @@
 
+#define FUSE_USE_VERSION 31
+
 #include "fs_basic.h"
 #include <string.h>
 #include <unistd.h>

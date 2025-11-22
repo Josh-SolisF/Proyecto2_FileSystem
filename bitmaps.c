@@ -1,6 +1,8 @@
 #include "fs_basic.h"
 #include "superblock.h"
 
+#define FUSE_USE_VERSION 31
+
 int allocate_inode(void) {
     for (int i = 0; i < (int)spblock.total_inodes; i++) {
         if (spblock.inode_bitmap[i] == '0') {

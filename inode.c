@@ -1,3 +1,6 @@
+
+#define FUSE_USE_VERSION 31
+
 #include "fs_basic.h"
 #include "fs_utils.h"
 #include "fuse_functions.h"

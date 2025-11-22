@@ -1,3 +1,6 @@
+
+#define FUSE_USE_VERSION 31
+
 #include "block.h"
 #include "fuse_functions.h"
 
