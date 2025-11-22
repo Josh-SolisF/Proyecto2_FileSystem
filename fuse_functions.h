@@ -5,7 +5,7 @@
 
 #define FUSE_USE_VERSION 31
 
-#include <fuse.h>
+#include <fuse3/fuse.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include "fs_basic.h"
