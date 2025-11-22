@@ -19,9 +19,31 @@ int qrfs_rename(const char *from, const char *to, unsigned int flags);
 // Estructura con operaciones FUSE
 extern struct fuse_operations qrfs_ops;
 
+
 typedef struct {
-    const char *folder;   // Carpeta backend donde están los bloques
-    u32 block_size;       // Tamaño de bloque
+
+    char *folder;
+    u32   block_size;
+
+    // Superblock fields
+    u32 version, total_blocks, total_inodes;
+    u32 inode_bitmap_start, inode_bitmap_blocks;
+    u32 data_bitmap_start,  data_bitmap_blocks;
+    u32 inode_table_start,  inode_table_blocks;
+    u32 data_region_start;
+
+    // Root
+    u32 root_inode;  // id (desde el superblock)
+
+    // Cache del inodo raíz deserializado:
+    u32 root_inode_number;
+    u32 root_inode_mode;
+    u32 root_uid, root_gid;
+    u32 root_links;
+    u32 root_size;
+    u32 root_direct[12];
+    u32 root_indirect1;
+    // Tamaño de bloque
 } qrfs_ctx;
 
 #endif

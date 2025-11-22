@@ -17,9 +17,16 @@
 
 #include <errno.h>
 
+#include <stdlib.h>
+#include <limits.h>
+
 #define FUSE_USE_VERSION 30
 #include <fuse3/fuse.h>
 
+
+#ifndef S_ISDIR
+#define S_ISDIR(m) (((m) & 0170000) == 0040000)
+#endif
 
 
 int mkfs(int argc, char **argv) {
@@ -225,19 +232,18 @@ int fsck_qrfs(const char *folder) {
 
 
 
+
 int mount_qrfs(int argc, char **argv) {
     if (argc < 4) {
         fprintf(stderr, "Uso: %s --mount <backend_folder> <mount_point>\n", argv[0]);
         return 1;
     }
 
-    char backend_abs[PATH_MAX];
+    char backend_abs[PATH_MAX], mount_abs[PATH_MAX];
     if (!realpath(argv[2], backend_abs)) {
         perror("No pude resolver ruta absoluta del backend_folder");
         return 1;
     }
-
-    char mount_abs[PATH_MAX];
     if (!realpath(argv[3], mount_abs)) {
         perror("No pude resolver ruta absoluta del mount_point");
         return 1;
@@ -253,20 +259,137 @@ int mount_qrfs(int argc, char **argv) {
         return 1;
     }
 
-    qrfs_ctx ctx = (qrfs_ctx){0};
-    ctx.folder     = strdup(backend_abs); // guarda copia estable
+    qrfs_ctx ctx = {0};
+    ctx.folder     = strdup(backend_abs);
+    if (!ctx.folder) {
+        fprintf(stderr, "Fallo strdup para backend_abs\n");
+        return 1;
+    }
+
+    // ⚠️ Si el tamaño de bloque es fijo en tu formato, déjalo aquí;
+    // si se almacena en el superblock, LEELO desde allí y no lo hardcodees.
     ctx.block_size = 1024;
 
+    // 1) Leer SUPERBLOQUE
+    u32 version, total_blocks, total_inodes;
+    unsigned char inode_bitmap[128], data_bitmap[128];
+    u32 root_inode;
+    u32 inode_bitmap_start, inode_bitmap_blocks;
+    u32 data_bitmap_start,  data_bitmap_blocks;
+    u32 inode_table_start,  inode_table_blocks;
+    u32 data_region_start;
+
+    int rc = read_superblock(ctx.folder, ctx.block_size,
+                             &version, &total_blocks, &total_inodes,
+                             inode_bitmap, data_bitmap,
+                             &root_inode,
+                             &inode_bitmap_start, &inode_bitmap_blocks,
+                             &data_bitmap_start,  &data_bitmap_blocks,
+                             &inode_table_start,  &inode_table_blocks,
+                             &data_region_start);
+    if (rc != 0) {
+        fprintf(stderr, "[mount] Falló read_superblock (rc=%d). Abortando.\n", rc);
+        free(ctx.folder);
+        return 1;
+    }
+
+    // 2) Copiar al ctx
+    ctx.version            = version;
+    ctx.total_blocks       = total_blocks;
+    ctx.total_inodes       = total_inodes;
+    ctx.inode_bitmap_start = inode_bitmap_start;
+    ctx.inode_bitmap_blocks= inode_bitmap_blocks;
+    ctx.data_bitmap_start  = data_bitmap_start;
+    ctx.data_bitmap_blocks = data_bitmap_blocks;
+    ctx.inode_table_start  = inode_table_start;
+    ctx.inode_table_blocks = inode_table_blocks;
+    ctx.data_region_start  = data_region_start;
+    ctx.root_inode         = root_inode;
+
+    // (Opcional) cachear bitmaps:
+    // memcpy(ctx.inode_bitmap, inode_bitmap, 128);
+    // memcpy(ctx.data_bitmap,  data_bitmap, 128);
+
+    // 2.1) Chequeos de integridad básicos (evita lecturas fuera de rango)
+    if (ctx.block_size == 0 || (ctx.block_size % 128) != 0) {
+        fprintf(stderr, "[mount] block_size=%u inválido para inodos de 128 bytes.\n", ctx.block_size);
+        free(ctx.folder);
+        return 1;
+    }
+    if (ctx.inode_table_start + ctx.inode_table_blocks > ctx.total_blocks) {
+        fprintf(stderr, "[mount] Tabla de inodos fuera de rango: start=%u blocks=%u total_blocks=%u\n",
+                ctx.inode_table_start, ctx.inode_table_blocks, ctx.total_blocks);
+        free(ctx.folder);
+        return 1;
+    }
+    if (ctx.root_inode >= ctx.total_inodes) {
+        fprintf(stderr, "[mount] root_inode=%u fuera de rango total_inodes=%u\n",
+                ctx.root_inode, ctx.total_inodes);
+        free(ctx.folder);
+        return 1;
+    }
+
+    // 3) Leer y deserializar el INODO RAÍZ desde la TABLA DE INODOS
+    unsigned char in128[128];
+    rc = read_inode_block(ctx.folder,
+                          ctx.root_inode,        // inode_id
+                          in128,
+                          ctx.block_size,
+                          ctx.inode_table_start, // start de la tabla
+                          ctx.total_inodes);
+    if (rc != 0) {
+        fprintf(stderr, "[mount] Falló read_inode_block(root=%u). rc=%d\n", ctx.root_inode, rc);
+        free(ctx.folder);
+        return 1;
+    }
+
+    inode_deserialize128(in128,
+                         &ctx.root_inode_number,
+                         &ctx.root_inode_mode,
+                         &ctx.root_uid,
+                         &ctx.root_gid,
+                         &ctx.root_links,
+                         &ctx.root_size,
+                         ctx.root_direct,
+                         &ctx.root_indirect1);
+
+    // Verificar que el número coincida con el id
+    if (ctx.root_inode_number != ctx.root_inode) {
+        fprintf(stderr, "[mount] Inconsistencia: superblock.root=%u pero inode.number=%u\n",
+                ctx.root_inode, ctx.root_inode_number);
+        // No abortamos necesariamente, pero logueamos.
+    }
+
+    // Verificar que sea directorio
+    if (!S_ISDIR(ctx.root_inode_mode)) {
+        fprintf(stderr, "[mount] El inodo raíz NO es un directorio (mode=0x%08x).\n",
+                ctx.root_inode_mode);
+        free(ctx.folder);
+        return 1;
+    }
+
+    // Logs útiles
+    fprintf(stderr, "QRFS: version=%u, blocks=%u, inodes=%u\n",
+            ctx.version, ctx.total_blocks, ctx.total_inodes);
+    fprintf(stderr, "QRFS: inode_table_start=%u blocks=%u, data_region_start=%u\n",
+            ctx.inode_table_start, ctx.inode_table_blocks, ctx.data_region_start);
+    fprintf(stderr, "QRFS: root_inode=%u size=%u links=%u uid=%u gid=%u\n",
+            ctx.root_inode_number, ctx.root_size, ctx.root_links, ctx.root_uid, ctx.root_gid);
+
+    // **Minimal fuse3**: programa, opciones, mountpoint al final
     char *fuse_argv[] = { "qrfs", "-f", mount_abs };
-    int   fuse_argc   = sizeof(fuse_argv)/sizeof(fuse_argv[0]);
+    int   fuse_argc   = (int)(sizeof(fuse_argv)/sizeof(fuse_argv[0]));
 
     for (int i = 0; i < fuse_argc; ++i) {
         fprintf(stderr, "fuse_argv[%d] = '%s'\n", i, fuse_argv[i]);
     }
     fprintf(stderr, "backend_folder = '%s'\n", ctx.folder);
 
-    return fuse_main(fuse_argc, fuse_argv, &qrfs_ops, &ctx);
-}
+    // 4) Lanzar FUSE con el ctx lleno
+    int ret = fuse_main(fuse_argc, fuse_argv, &qrfs_ops, &ctx);
 
+    free(ctx.folder);
+    return ret;
+}
 
 
