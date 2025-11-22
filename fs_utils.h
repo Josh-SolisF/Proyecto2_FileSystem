@@ -10,4 +10,5 @@ static inline void now_timespec(struct timespec *ts) {
 void u32le_write(u32 v, unsigned char *p);
 u32 ceil_div(u32 a, u32 b);
 u32 u32le_read(const unsigned char *p);
+int update_bitmaps(const char *folder);
 #endif
