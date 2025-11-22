@@ -361,8 +361,13 @@ rc = read_inode_block(ctx, ctx->root_inode, in128);
             ctx->root_inode_number, ctx->root_size, ctx->root_links, ctx->root_uid, ctx->root_gid);
 
     // Preparar argumentos para FUSE
-    char *fuse_argv[] = { "qrfs", "-f", mount_abs };
-    int fuse_argc = (int)(sizeof(fuse_argv) / sizeof(fuse_argv[0]));
+
+char *fuse_argv[] = { "qrfs", "-f", "-d", "-s", mount_abs };
+
+int fuse_argc = (int)(sizeof(fuse_argv) / sizeof(fuse_argv[0]));
+
+
+
 
     // Lanzar FUSE con el contexto
     int ret = fuse_main(fuse_argc, fuse_argv, &qrfs_ops, ctx);
