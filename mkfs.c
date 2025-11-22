@@ -219,7 +219,7 @@ int mount_qrfs(int argc, char **argv) {
     }
 
     const char *backend_folder = argv[2];
-    const char *mount_point = argv[3];
+    const char *mount_point    = argv[3];
 
     // Leer superbloque para inicializar contexto
     u32 version, total_blocks, total_inodes;
@@ -239,16 +239,15 @@ int mount_qrfs(int argc, char **argv) {
     }
 
     // Inicializar contexto
-    qrfs_ctx ctx;
-    ctx.folder = backend_folder;
-    ctx.block_size = 1024; // O leer del superbloque si está guardado
+    qrfs_ctx ctx = {0};
+    ctx.folder     = backend_folder;
+    ctx.block_size = 1024; // si lo guardas en SB, mejor leerlo
 
-    // Preparar argumentos para FUSE
-    char *fuse_argv[] = { "qrfs", (char *)mount_point, "-f" }; // -f = foreground
-    int fuse_argc = 3;
+
+    char *fuse_argv[] = { "qrfs", "-f", "-s", (char *)mount_point };
+    int   fuse_argc   = sizeof(fuse_argv) / sizeof(fuse_argv[0]);
 
     return fuse_main(fuse_argc, fuse_argv, &qrfs_ops, &ctx);
 }
-
 
 
