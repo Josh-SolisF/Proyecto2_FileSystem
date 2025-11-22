@@ -41,12 +41,7 @@ if (search_inode_by_path(ctx, path, &inode_id) != 0) {
     // Leer el inodo desde disco
 
  unsigned char raw[128];
-    int rc = read_inode_block(ctx->folder,
-                              inode_id,
-                              raw,
-                              ctx->block_size,
-                              ctx->inode_table_start,
-                              ctx->total_inodes);
+  int rc = read_inode_block(ctx, inode_id, raw);
     if (rc != 0) {
         return -EIO; // error de I/O
     }
