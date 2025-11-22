@@ -270,7 +270,7 @@ int qrfs_write(const char *path, const char *buf, size_t size, off_t offset, str
 }
 
 
-int qrfs_rename(const char *from, const char *to) {
+int qrfs_rename(const char *from, const char *to, unsigned int flags) {
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
     const char *folder = ctx->folder;
     u32 block_size = ctx->block_size;
