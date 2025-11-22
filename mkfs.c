@@ -212,6 +212,7 @@ int fsck_qrfs(const char *folder) {
 
 
 
+
 int mount_qrfs(int argc, char **argv) {
     if (argc < 4) {
         fprintf(stderr, "Uso: %s --mount <backend_folder> <mount_point>\n", argv[0]);
@@ -221,33 +222,25 @@ int mount_qrfs(int argc, char **argv) {
     const char *backend_folder = argv[2];
     const char *mount_point    = argv[3];
 
-    // Leer superbloque para inicializar contexto
-    u32 version, total_blocks, total_inodes;
-    unsigned char inode_bitmap[128], data_bitmap[128];
-    u32 root_inode, inode_bitmap_start, inode_bitmap_blocks;
-    u32 data_bitmap_start, data_bitmap_blocks;
-    u32 inode_table_start, inode_table_blocks, data_region_start;
-
-    if (read_superblock(backend_folder, 1024, &version, &total_blocks, &total_inodes,
-                        inode_bitmap, data_bitmap, &root_inode,
-                        &inode_bitmap_start, &inode_bitmap_blocks,
-                        &data_bitmap_start, &data_bitmap_blocks,
-                        &inode_table_start, &inode_table_blocks,
-                        &data_region_start) != 0) {
-        fprintf(stderr, "Error leyendo superbloque.\n");
+    // (Opcional pero recomendado) Validar mount_point existe y es dir
+    struct stat st;
+    if (stat(mount_point, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "Mount point '%s' no existe o no es un directorio.\n", mount_point);
         return 1;
     }
 
-    // Inicializar contexto
+    // Leer superbloque, inicializar contexto...
     qrfs_ctx ctx = {0};
     ctx.folder     = backend_folder;
-    ctx.block_size = 1024; // si lo guardas en SB, mejor leerlo
+    ctx.block_size = 1024;
 
-
-    char *fuse_argv[] = { "qrfs", "-f", "-s", (char *)mount_point };
+    // Opciones primero; mountpoint al final
+    // -f = foreground; -s = single-thread (útil para depurar); -d = debug
+    char *fuse_argv[] = { "qrfs", "-f", "-s", "-d", "-o", "fsname=qrfs", (char *)mount_point };
     int   fuse_argc   = sizeof(fuse_argv) / sizeof(fuse_argv[0]);
 
     return fuse_main(fuse_argc, fuse_argv, &qrfs_ops, &ctx);
 }
+
 
 
