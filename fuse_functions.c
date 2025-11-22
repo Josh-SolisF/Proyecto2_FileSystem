@@ -390,6 +390,26 @@ int qrfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 }
 
 
+int qrfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+                 off_t offset, struct fuse_file_info *fi,
+                 enum fuse_readdir_flags flags)
+{
+    (void)offset; (void)fi; (void)flags;
+
+    // Solo soportamos el root por ahora
+    if (strcmp(path, "/") != 0)
+        return -ENOENT;
+
+    // SIEMPRE devolver "." y ".."
+    filler(buf, ".",  NULL, 0, 0);
+    filler(buf, "..", NULL, 0, 0);
+
+    // Entrada de prueba (quítala cuando listes las reales desde tus bloques)
+    filler(buf, "README.txt", NULL, 0, 0);
+
+    return 0;
+}
+
 // Estructura global con operaciones
 struct fuse_operations qrfs_ops = {
     .getattr = qrfs_getattr,

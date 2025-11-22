@@ -59,13 +59,16 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
         if (!S_ISDIR(mode)) return -ENOTDIR;
 
         int found = 0;
+        // Buffer estático para evitar alloca
+        static unsigned char block_buf[65536]; // Ajusta según el máximo block_size esperado
+        if (ctx->block_size > sizeof(block_buf)) return -E2BIG; // Protección extra
+
         for (int i = 0; i < 12 && direct[i] != 0; i++) {
-            unsigned char *block = alloca(ctx->block_size); // o un buffer estático suficientemente grande
-            int brc = read_block(ctx->folder, direct[i], block, ctx->block_size);
+            int brc = read_block(ctx->folder, direct[i], block_buf, ctx->block_size);
             if (brc != 0) return -EIO;
 
             size_t entries = ctx->block_size / sizeof(dir_entry);
-            dir_entry *entries_ptr = (dir_entry *)block;
+            dir_entry *entries_ptr = (dir_entry *)block_buf;
 
             for (size_t j = 0; j < entries; j++) {
                 if (entries_ptr[j].inode_id != 0 &&
@@ -86,8 +89,6 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
     *inode_id_out = current_inode;
     return 0;
 }
-
-
 
 
 
