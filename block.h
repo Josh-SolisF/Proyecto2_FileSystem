@@ -1,6 +1,6 @@
 // block_io.h
-#ifndef BLOCK_IO_H
-#define BLOCK_IO_H
+#ifndef BLOCK_H
+#define BLOCK_H
 #include "fs_basic.h"
 
 int ensure_folder(const char *folder);

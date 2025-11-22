@@ -254,7 +254,6 @@ static int write_block(const char *folder, u32 index, const void *buf, u32 len) 
 }
 
 
-/* ---- Serialización del superbloque con offsets ---- */
 static int write_superblock_with_offsets(
     const char *folder,
     u32 block_size,
@@ -279,7 +278,7 @@ static int write_superblock_with_offsets(
     u32le_write(total_blocks,   &buf[12]);
     u32le_write(total_inodes,   &buf[16]);
 
-    // Bitmaps (copiados crudos al SB, 128 bytes c/u)
+    // Bitmaps
     memcpy(&buf[20],  inode_bitmap_128, 128);
     memcpy(&buf[148], data_bitmap_128,  128);
 
@@ -330,11 +329,8 @@ static void inode_serialize128(
     for (int i=0;i<12;i++) u32le_write(direct[i], &out[24 + i*4]);
     u32le_write(indirect1,    &out[72]);
 }
+//Directorio en disco, usamos entradas fijas inode_id y bytes, aparte de dos entradas . ..
 
-/* ---- Directorio en disco (bloque de 1024):
- * Usamos entradas fijas tipo (u32 inode_id + 256 bytes name) = 260 bytes c/u.
- * Dos entradas: "." y ".." ocupan 520 bytes.
- */
 static void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) {
     memset(block, 0, block_size);
     // entrada "."

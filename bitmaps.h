@@ -8,4 +8,6 @@ void free_inode(int inode_id);
 int  allocate_block(void);
 void free_block(int block_num);
 
+int update_bitmaps(const char *folder);
+
 #endif

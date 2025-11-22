@@ -1,5 +1,8 @@
 #include "fs_basic.h"
 #include "fs_utils.h"
+#include "inode.h"
+#include "block.h"
+
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
@@ -50,23 +53,33 @@ void inode_deserialize128(const unsigned char in[128],u32 *inode_number, u32 *in
 }
 
 
-//Esto es estatico, estamos usando la pública asi que se puede borrar, esta en dir.c
+int write_inode(const char *folder, u32 inode_id, const inode *node) {
+    unsigned char buf[128];
+    inode_serialize128(buf,
+        node->inode_number, node->inode_mode, node->user_id, node->group_id,
+        node->links_quaintities, node->inode_size, node->direct, node->indirect1);
 
+    // Calcular posición en la tabla de inodos
+    u32 inode_table_start = spblock.total_blocks - spblock.total_inodes; // Ajusta según tu diseño
+    u32 block_index = inode_table_start + inode_id;
 
-/*
-// Usamos entradas fijas tipo (u32 inode_id + 256 bytes name) = 260 bytes c/u.
-
-static void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) {
-    memset(block, 0, block_size);
-    // entrada "."
-    u32le_write(root_inode, &block[0]);                // inode_id
-    const char *dot = ".";
-    strncpy((char*)&block[4], dot, 256);
-    // entrada ".."
-    u32le_write(root_inode, &block[264]);              // inode_id
-    const char *dotdot = "..";
-    strncpy((char*)&block[268], dotdot, 256);
-    // resto queda en cero
+    return write_block(folder, block_index, buf, sizeof(buf));
 }
 
- */
+
+int read_inode(const char *folder, u32 inode_id, inode *node) {
+    unsigned char buf[128];
+    u32 inode_table_start = spblock.total_blocks - spblock.total_inodes; // Ajusta según tu diseño
+    u32 block_index = inode_table_start + inode_id;
+
+    if (read_block(folder, block_index, buf, sizeof(buf)) != 0) {
+        return -1;
+    }
+
+    inode_deserialize128(buf,
+        &node->inode_number, &node->inode_mode, &node->user_id, &node->group_id,
+        &node->links_quaintities, &node->inode_size, node->direct, &node->indirect1);
+
+    return 0;
+}
+

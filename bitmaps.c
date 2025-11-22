@@ -1,4 +1,5 @@
 #include "fs_basic.h"
+#include "superblock.h"
 
 int allocate_inode(void) {
     for (int i = 0; i < (int)spblock.total_inodes; i++) {
@@ -30,4 +31,19 @@ void free_block(int block_num) {
     if (block_num >= 0 && block_num < (int)spblock.total_blocks) {
         spblock.data_bitmap[block_num] = '0';
     }
+}
+
+
+int update_bitmaps(const char *folder) {
+    return write_superblock_with_offsets(
+        folder,
+        spblock.blocksize,
+        spblock.total_blocks,
+        spblock.total_inodes,
+        (unsigned char *)spblock.inode_bitmap,
+        (unsigned char *)spblock.data_bitmap,
+        spblock.root_inode,
+        /* offsets: ajusta según tu diseño */
+        1, 1, 2, 1, 3, spblock.total_inodes, 3 + spblock.total_inodes
+    );
 }

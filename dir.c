@@ -126,3 +126,33 @@ void list_directory_block(const char *folder, u32 block_size, u32 dir_block_inde
 
     free(buf);
 }
+
+
+int add_dir_entry_to_block(unsigned char *block, u32 block_size, const dir_entry *entry) {
+    u32 max_entries = block_size / sizeof(dir_entry);
+    dir_entry *entries = (dir_entry *)block;
+
+    for (u32 i = 0; i < max_entries; i++) {
+        if (entries[i].inode_id == 0) { // Espacio libre
+            entries[i] = *entry;
+            return 0;
+        }
+    }
+    return -1; // No hay espacio
+}
+
+
+int write_directory_block(const char *folder, u32 block_index, const unsigned char *block, u32 block_size) {
+    return write_block(folder, block_index, block, block_size);
+}
+
+
+//Solo soporta raíz y un nivel
+int find_parent_dir_block(const char *path, u32 *block_index) {
+    if (strcmp(path, "/") == 0) {
+        *block_index = 0; // Bloque raíz
+        return 0;
+    }
+    // Aquí deberiamos parsear el path y buscar en el directorio
+    return -1; // por el momento x
+}
