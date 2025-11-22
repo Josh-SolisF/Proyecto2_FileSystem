@@ -219,6 +219,7 @@ int fsck_qrfs(const char *folder) {
 
 
 
+
 int mount_qrfs(int argc, char **argv) {
     if (argc < 4) {
         fprintf(stderr, "Uso: %s --mount <backend_folder> <mount_point>\n", argv[0]);
@@ -233,37 +234,25 @@ int mount_qrfs(int argc, char **argv) {
         fprintf(stderr, "Mount point '%s' no existe o no es un directorio.\n", mount_point);
         return 1;
     }
-
-    qrfs_ctx ctx = {0};
-    ctx.folder     = backend_folder;
-    ctx.block_size = 1024;
-
-    // Construye args y deja que FUSE los parsee
-    char *fuse_argv[] = { "qrfs", "-f", "-s", "-d", "-o", "fsname=qrfs", (char*)mount_point };
-    int   fuse_argc   = sizeof(fuse_argv)/sizeof(fuse_argv[0]);
-
-    struct fuse_args args = FUSE_ARGS_INIT(fuse_argc, fuse_argv);
-
-    // (Opcional) FUSE puede decidir mountpoint y flags.
-    char *mp_out = NULL;
-    int foreground, multithread;
-
-    if (fuse_parse_cmdline(&args, &mp_out, &foreground, &multithread) != 0) {
-        fprintf(stderr, "Error parseando línea de comandos de FUSE.\n");
-        fuse_opt_free_args(&args);
+    if (access(mount_point, W_OK) != 0) {
+        perror("No tengo permiso de escritura sobre el mountpoint");
         return 1;
     }
 
-    // Si FUSE detectó mountpoint, úsalo; si no, usa el tuyo
-    if (!mp_out) mp_out = (char *)mount_point;
+    qrfs_ctx ctx = (qrfs_ctx){0};
+    ctx.folder     = backend_folder;
+    ctx.block_size = 1024;
 
-    // Chequeo defensivo
-    if (strcmp(mp_out, mount_point) != 0) {
-        fprintf(stderr, "Aviso: FUSE cambió mountpoint a '%s'\n", mp_out);
+    // **Minimal fuse3**: programa, opciones, mountpoint al final
+    char *fuse_argv[] = { "qrfs", "-f", (char *)mount_point };
+    int   fuse_argc   = sizeof(fuse_argv)/sizeof(fuse_argv[0]);
+
+    // Depura qué se pasa a FUSE
+    for (int i = 0; i < fuse_argc; ++i) {
+        fprintf(stderr, "fuse_argv[%d] = '%s'\n", i, fuse_argv[i]);
     }
 
-    int ret = fuse_main(args.argc, args.argv, &qrfs_ops, &ctx);
-    fuse_opt_free_args(&args);
-    return ret;
+    return fuse_main(fuse_argc, fuse_argv, &qrfs_ops, &ctx);
 }
+
 

@@ -9,7 +9,7 @@
 
 #include <unistd.h>    // access(), etc.
 
-#include <fuse.h>
+#include <fuse3/fuse.h>
 
 #include "fuse_functions.h"
 
