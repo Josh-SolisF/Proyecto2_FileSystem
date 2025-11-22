@@ -41,8 +41,10 @@ void init_inode(inode *node, u32 inode_id, mode_t mode, u32 size) {
 
 
 
-void inode_deserialize128(const unsigned char in[128],u32 *inode_number, u32 *inode_mode, u32 *user_id, u32 *group_id,
-    u32 *links, u32 *size,u32 direct[12], u32 *indirect1) {
+void inode_deserialize128(const unsigned char in[128],
+    u32 *inode_number, u32 *inode_mode, u32 *user_id, u32 *group_id,
+    u32 *links, u32 *size, u32 direct[12], u32 *indirect1)
+{
     *inode_number = u32le_read(&in[0]);
     *inode_mode   = u32le_read(&in[4]);
     *user_id      = u32le_read(&in[8]);
@@ -53,9 +55,9 @@ void inode_deserialize128(const unsigned char in[128],u32 *inode_number, u32 *in
     for (int i = 0; i < 12; i++) {
         direct[i] = u32le_read(&in[24 + i * 4]);
     }
-
     *indirect1 = u32le_read(&in[72]);
 }
+
 
 
 int write_inode(const char *folder, u32 inode_id, const inode *node) {

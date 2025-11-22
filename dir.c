@@ -33,13 +33,11 @@ void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) 
 int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
     if (!ctx || !path || !inode_id_out) return -EINVAL;
 
-    // Si el path es "/" devolvemos el inodo raíz
     if (strcmp(path, "/") == 0) {
         *inode_id_out = ctx->root_inode;
         return 0;
     }
 
-    // Copiar path y tokenizar
     char tmp[PATH_MAX];
     strncpy(tmp, path, sizeof(tmp));
     tmp[sizeof(tmp)-1] = '\0';
@@ -48,28 +46,21 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
     u32 current_inode = ctx->root_inode;
 
     while (token) {
-        // Leer inodo actual
         unsigned char in128[128];
-        if (read_inode_block(ctx, current_inode, in128) != 0) {
-            return -ENOENT;
-        }
+        int irc = read_inode_block(ctx, current_inode, in128);
+        if (irc != 0) return -ENOENT;
 
-        // Deserializar inodo
         u32 inode_number, mode, uid, gid, links, size, direct[12], indirect1;
         inode_deserialize128(in128, &inode_number, &mode, &uid, &gid,
-                              &links, &size, direct, &indirect1);
+                             &links, &size, direct, &indirect1);
 
-        if (!S_ISDIR(mode)) {
-            return -ENOTDIR; // No es directorio
-        }
+        if (!S_ISDIR(mode)) return -ENOTDIR;
 
-        // Buscar token en las entradas del directorio
         int found = 0;
         for (int i = 0; i < 12 && direct[i] != 0; i++) {
-            unsigned char block[4096];
-            if (read_block(ctx->folder, direct[i], block, ctx->block_size) != 0) {
-                return -EIO;
-            }
+            unsigned char *block = alloca(ctx->block_size); // o un buffer estático suficientemente grande
+            int brc = read_block(ctx->folder, direct[i], block, ctx->block_size);
+            if (brc != 0) return -EIO;
 
             size_t entries = ctx->block_size / sizeof(dir_entry);
             dir_entry *entries_ptr = (dir_entry *)block;
@@ -85,9 +76,7 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
             if (found) break;
         }
 
-        if (!found) {
-            return -ENOENT; // No se encontró el componente
-        }
+        if (!found) return -ENOENT;
 
         token = strtok(NULL, "/");
     }
@@ -95,6 +84,7 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
     *inode_id_out = current_inode;
     return 0;
 }
+
 
 
 

@@ -19,47 +19,146 @@
 #include "fs_utils.h"
 #include <sys/stat.h>
 
-int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) {
-    (void) fi; // not used
-    memset(stbuf, 0, sizeof(struct stat));
+#include <inttypes.h>
 
-    // Recuperar contexto (folder y block_size)
-    qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
 
-    if (!ctx) {
-        return -EIO;
+// Rellena struct stat desde los campos del inodo deserializado.
+// Ajusta si tus tipos tienen nombres distintos.
+static void stat_fill_from_inode(struct stat *st,
+                                 u32 ino, u32 mode, u32 uid, u32 gid,
+                                 u32 links, u32 size)
+{
+    memset(st, 0, sizeof(*st));
+
+    st->st_ino   = ino;
+    st->st_mode  = mode;         // Debe traer el S_IFDIR/S_IFREG + permisos
+    st->st_uid   = uid;
+    st->st_gid   = gid;
+    st->st_nlink = (links == 0 ? 1 : links);
+    st->st_size  = size;
+
+    // Si aún no guardas tiempos en tu inodo, usa el tiempo actual como placeholder
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    st->st_atim = now;
+    st->st_mtim = now;
+    st->st_ctim = now;
+
+    // Para directorios, algunos clientes esperan al menos 2 links
+    if ((mode & S_IFMT) == S_IFDIR && st->st_nlink < 2) {
+        st->st_nlink = 2;
     }
 
-    // Buscar el inodo correspondiente al path
+    // Opcional: si tienes tamaño lógico del directorio (número de entradas * tamaño de entrada), úsalo.
+}
 
-u32 inode_id;
-if (search_inode_by_path(ctx, path, &inode_id) != 0) {
-    return -ENOENT;
+static void stat_fill_from_inode(struct stat *st,
+                                 u32 ino, u32 mode, u32 uid, u32 gid,
+                                 u32 links, u32 size)
+{
+    memset(st, 0, sizeof(*st));
+    st->st_ino   = ino;
+    st->st_mode  = mode;                    // Debe incluir S_IFDIR/S_IFREG + permisos
+    st->st_uid   = uid;
+    st->st_gid   = gid;
+    st->st_nlink = (links == 0 ? 1 : links);
+    st->st_size  = size;
+
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    st->st_atim = now;
+    st->st_mtim = now;
+    st->st_ctim = now;
+
+    if ((mode & S_IFMT) == S_IFDIR && st->st_nlink < 2) {
+        st->st_nlink = 2;                   // . y ..
+    }
+}
+
+int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) {
+    (void)fi;
+    fprintf(stderr, "[getattr] path='%s'\n", path);
+
+    qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
+    if (!ctx) return -EIO;
+
+    // Raíz
+    if (strcmp(path, "/") == 0) {
+        u32 mode = ctx->root_inode_mode;
+        if ((mode & S_IFMT) != S_IFDIR) {
+            mode = (S_IFDIR | 0755);        // defensa
+        }
+        stat_fill_from_inode(stbuf,
+            ctx->root_inode_number,
+            mode,
+            ctx->root_uid,
+            ctx->root_gid,
+            ctx->root_links == 0 ? 2 : ctx->root_links,
+            ctx->root_size
+        );
+        return 0;
+    }
+
+    // Buscar inodo por path
+    u32 inode_id = 0;
+    int s_rc = search_inode_by_path(ctx, path, &inode_id);
+    if (s_rc != 0) return -ENOENT;
+
+    unsigned char raw[128];
+    int r_rc = read_inode_block(ctx, inode_id, raw);
+    if (r_rc != 0) return -EIO;
+
+    u32 ino=0, mode=0, uid=0, gid=0, links=0, size=0, direct[12], ind1=0;
+    inode_deserialize128(raw, &ino, &mode, &uid, &gid, &links, &size, direct, &ind1);
+
+    u32 type = (mode & S_IFMT);
+    if (type != S_IFDIR && type != S_IFREG) {
+        // Extiende para symlink/char/block/pipe/etc. cuando los soportes
+        return -ENOENT;
+    }
+
+    stat_fill_from_inode(stbuf, ino, mode, uid, gid, links, size);
+    return 0;
 }
 
 
-    // Leer el inodo desde disco
-
- unsigned char raw[128];
-  int rc = read_inode_block(ctx, inode_id, raw);
-    if (rc != 0) {
-        return -EIO; // error de I/O
+    // Para el resto de paths: buscar inodo por path
+    // search_inode_by_path debe:
+    //  - Empezar en root
+    //  - Recorrer componentes "dir1/dir2/file"
+    //  - Leer bloques de directorio y encontrar la entrada
+    //  - Devolver el inode_id
+    u32 inode_id = 0;
+    int s_rc = search_inode_by_path(ctx, path, &inode_id);
+    if (s_rc != 0) {
+        // No existe
+        return -ENOENT;
     }
 
+    // Leer el inodo
+    unsigned char raw[128];
+    int r_rc = read_inode_block(ctx, inode_id, raw);
+    if (r_rc != 0) {
+        return -EIO;
+    }
 
-    // Deserializar atributos del inodo
-    u32 ino, mode, uid, gid, links, size, direct[12], ind1;
-    inode_deserialize128(raw, &ino, &mode, &uid, &gid, &links, &size, direct, &ind1);
+    // Deserializar
+    u32 ino = 0, mode = 0, uid = 0, gid = 0, links = 0, size = 0, direct[12], ind1 = 0;
+    int d_rc = inode_deserialize128(raw, &ino, &mode, &uid, &gid, &links, &size, direct, &ind1);
+    if (d_rc != 0) {
+        return -EINVAL;
+    }
+
+    // Validar tipo (solo soportamos DIR y REG por ahora)
+    u32 type = (mode & S_IFMT);
+    if (type != S_IFDIR && type != S_IFREG) {
+        // Si luego soportas symlink, device, etc., amplía aquí
+        // Por ahora, responde como no soportado/no encontrado.
+        return -ENOENT;
+    }
 
     // Llenar struct stat
-     stbuf->st_ino   = ino;
-    stbuf->st_mode  = mode;      // Contiene S_IFDIR o S_IFREG + permisos
-    stbuf->st_uid   = uid;       // Usuario propietario
-    stbuf->st_gid   = gid;       // Grupo propietario
-    stbuf->st_nlink = links;     // Número de enlaces
-    stbuf->st_size  = size;      // Tamaño del archivo
-
-
+    stat_fill_from_inode(stbuf, ino, mode, uid, gid, links, size);
     return 0;
 }
 
