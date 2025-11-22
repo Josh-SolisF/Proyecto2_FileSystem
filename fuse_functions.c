@@ -275,13 +275,13 @@ int qrfs_rename(const char *from, const char *to, unsigned int flags) {
     const char *folder = ctx->folder;
     u32 block_size = ctx->block_size;
 
-    // 1. Buscar inodo del archivo origen
+    //Buscar inodo del archivo origen
     u32 inode_id = search_inode_by_path(folder, from, block_size);
     if ((int)inode_id < 0) {
         return -ENOENT;
     }
 
-    // 2. Parsear paths
+    //Parsear paths
     char from_copy[512], to_copy[512];
     strncpy(from_copy, from, sizeof(from_copy));
     strncpy(to_copy, to, sizeof(to_copy));
@@ -292,7 +292,7 @@ int qrfs_rename(const char *from, const char *to, unsigned int flags) {
     char *to_parent   = dirname(to_copy);
     char *to_name     = basename(to_copy);
 
-    // 3. Bloque del directorio padre origen
+    //Bloque del directorio padre origen
     u32 from_block, to_block;
     if (find_parent_dir_block(from_parent, &from_block) != 0) return -ENOENT;
     if (find_parent_dir_block(to_parent, &to_block) != 0) return -ENOENT;
@@ -303,7 +303,7 @@ int qrfs_rename(const char *from, const char *to, unsigned int flags) {
     if (read_block(folder, from_block, block_from, block_size) != 0) return -EIO;
     if (read_block(folder, to_block, block_to, block_size) != 0) return -EIO;
 
-    // 4. Eliminar entrada en bloque origen
+    //Eliminar entrada en bloque origen
     u32 max_entries = block_size / sizeof(dir_entry);
     dir_entry *entries_from = (dir_entry *)block_from;
     int removed = 0;
@@ -317,14 +317,14 @@ int qrfs_rename(const char *from, const char *to, unsigned int flags) {
     }
     if (!removed) return -ENOENT;
 
-    // 5. Agregar entrada en bloque destino
+    // Agregar entrada en bloque destino
     dir_entry new_entry;
     init_dir_entry(&new_entry, inode_id, to_name);
     if (add_dir_entry_to_block(block_to, block_size, &new_entry) != 0) {
         return -ENOSPC;
     }
 
-    // 6. Persistir cambios
+    // Persistir cambios
     if (write_directory_block(folder, from_block, block_from, block_size) != 0) return -EIO;
     if (write_directory_block(folder, to_block, block_to, block_size) != 0) return -EIO;
 
