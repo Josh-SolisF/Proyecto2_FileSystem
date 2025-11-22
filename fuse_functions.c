@@ -107,7 +107,7 @@ int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi
 
     return 0;
 
-
+}
 
 int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
     (void) fi; // No se usa por ahora
