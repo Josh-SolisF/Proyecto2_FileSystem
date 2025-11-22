@@ -2,6 +2,7 @@
 #ifndef BLOCK_H
 #define BLOCK_H
 #include "fs_basic.h"
+#include "fuse_functions.h"
 
 int ensure_folder(const char *folder);
 int create_zero_block(const char *folder, u32 index, u32 block_size);
