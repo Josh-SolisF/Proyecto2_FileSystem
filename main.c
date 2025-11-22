@@ -7,7 +7,7 @@
 
 int fsck_qrfs(const char *folder);
 int mkfs(int argc, char **argv);
-int mount_qrfs(argc, argv);
+int mount_qrfs(argc, **argv);
 
 int main(int argc, char *argv[]) {
     if (argc > 1 && strcmp(argv[1], "--fsck") == 0) {
