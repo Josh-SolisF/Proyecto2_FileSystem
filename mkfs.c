@@ -1,4 +1,6 @@
 
+#define FUSE_USE_VERSION 31
+
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
