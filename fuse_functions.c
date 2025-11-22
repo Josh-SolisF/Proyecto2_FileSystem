@@ -6,6 +6,10 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
+#include "block.h"       // Para read_inode_block
+#include "inode.h"          // Para inode_deserialize128
+#include "dir.h"            // Para search_inode_by_path (o fs_utils.h si la pusiste ahí)
+
 
 int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) {
     (void) fi; // not used
