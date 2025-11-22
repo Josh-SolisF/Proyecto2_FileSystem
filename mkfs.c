@@ -4,6 +4,7 @@
 #include "superblock.h"
 #include "inode.h"
 #include "dir.h"
+#include "fuse_functions.h"
 
 #include <stdio.h>
 #include <stdlib.h>
