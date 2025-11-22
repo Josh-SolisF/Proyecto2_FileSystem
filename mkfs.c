@@ -213,7 +213,7 @@ int fsck_qrfs(const char *folder) {
 
 
 int mount_qrfs(int argc, char **argv) {
-    if (argc < 3) {
+    if (argc < 4) {
         fprintf(stderr, "Uso: %s --mount <backend_folder> <mount_point>\n", argv[0]);
         return 1;
     }
@@ -244,10 +244,11 @@ int mount_qrfs(int argc, char **argv) {
     ctx.block_size = 1024; // O leer del superbloque si está guardado
 
     // Preparar argumentos para FUSE
-    char *fuse_argv[] = { argv[0], (char *)mount_point };
-    int fuse_argc = 2;
+    char *fuse_argv[] = { "qrfs", (char *)mount_point, "-f" }; // -f = foreground
+    int fuse_argc = 3;
 
     return fuse_main(fuse_argc, fuse_argv, &qrfs_ops, &ctx);
 }
+
 
 
