@@ -24,6 +24,9 @@
 #endif
 #include "fs_utils.h"
 
+#include <stdlib.h>   // realpath()
+#include <limits.h>   // PATH_MAX
+
 
 
 
@@ -238,6 +241,16 @@ int mount_qrfs(int argc, char **argv) {
     }
 
     char backend_abs[PATH_MAX], mount_abs[PATH_MAX];
+
+
+if (!realpath(argv[2], backend_abs)) {
+    perror("No pude resolver ruta absoluta del backend_folder");
+    return 1;
+}
+if (!realpath(argv[3], mount_abs)) {
+    perror("No pude resolver ruta absoluta del mount_point");
+    return 1;
+}
 
     struct stat st;
     if (stat(mount_abs, &st) != 0 || !S_ISDIR(st.st_mode)) {
