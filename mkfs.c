@@ -13,6 +13,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <limits.h>
+
 #include <errno.h>
 
 #define FUSE_USE_VERSION 30
