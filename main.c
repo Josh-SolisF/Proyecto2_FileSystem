@@ -2,12 +2,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <sys/types.h>
+
+#include <sys/stat.h>  // define struct stat, S_ISDIR
+
+#include <unistd.h>    // access(), etc.
+
+#include <fuse.h>
+
 #include "fuse_functions.h"
 
 
 int fsck_qrfs(const char *folder);
 int mkfs(int argc, char **argv);
-int mount_qrfs(argc, **argv);
+
+int mount_qrfs(int argc, char **argv);  // <-- tipos correctos
+
 
 int main(int argc, char *argv[]) {
     if (argc > 1 && strcmp(argv[1], "--fsck") == 0) {
@@ -17,7 +28,7 @@ int main(int argc, char *argv[]) {
         return mkfs(argc, argv);
     }
     if (argc > 1 && strcmp(argv[1], "--mount") == 0) {
-        return mount_qrfs(argc,  **argv) ;
+        return mount_qrfs(argc, argv);   // <-- sin "**"
     }
 
     fprintf(stderr, "Uso: %s --mkfs <folder> | --fsck <folder> | --mount <backend_folder> <mount_point>\n", argv[0]);
