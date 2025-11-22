@@ -7,6 +7,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "fs_basic.h"
+#include <stdio.h>
+#include <stdint.h>
 
 // Declaración de funciones FUSE
 int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi);
@@ -20,8 +22,9 @@ int qrfs_rename(const char *from, const char *to, unsigned int flags);
 extern struct fuse_operations qrfs_ops;
 
 
-typedef struct {
 
+
+typedef struct {
     char *folder;
     u32   block_size;
 
@@ -33,9 +36,9 @@ typedef struct {
     u32 data_region_start;
 
     // Root
-    u32 root_inode;  // id (desde el superblock)
+    u32 root_inode;
 
-    // Cache del inodo raíz deserializado:
+    // Cache root inode (opcional)
     u32 root_inode_number;
     u32 root_inode_mode;
     u32 root_uid, root_gid;
@@ -43,7 +46,7 @@ typedef struct {
     u32 root_size;
     u32 root_direct[12];
     u32 root_indirect1;
-    // Tamaño de bloque
 } qrfs_ctx;
+
 
 #endif
