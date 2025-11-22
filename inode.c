@@ -89,23 +89,4 @@ int read_inode(const char *folder, u32 inode_id, inode *node) {
 }
 
 
-int read_inode_block(const char *folder, u32 inode_id, unsigned char out128[128],
-                     u32 block_size, u32 inode_table_start, u32 total_inodes) {
-    const u32 inodes_per_block = block_size / 128;
-    if (inodes_per_block == 0) return -1;
-    if (inode_id >= total_inodes) return -1;
-
-    const u32 rel_block = inode_id / inodes_per_block;
-    const u32 offset    = (inode_id % inodes_per_block) * 128;
-    const u32 abs_block = inode_table_start + rel_block;
-
-    unsigned char block[4096];
-    if (block_size > sizeof(block)) return -1;
-
-    if (read_block(folder, abs_block, block, block_size) != 0) {
-        return -1;
-    }
-    memcpy(out128, block + offset, 128);
-    return 0;
-}
 
