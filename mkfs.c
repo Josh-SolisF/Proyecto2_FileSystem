@@ -211,3 +211,43 @@ int fsck_qrfs(const char *folder) {
 }
 
 
+
+int mount_qrfs(int argc, char **argv) {
+    if (argc < 3) {
+        fprintf(stderr, "Uso: %s --mount <backend_folder> <mount_point>\n", argv[0]);
+        return 1;
+    }
+
+    const char *backend_folder = argv[2];
+    const char *mount_point = argv[3];
+
+    // Leer superbloque para inicializar contexto
+    u32 version, total_blocks, total_inodes;
+    unsigned char inode_bitmap[128], data_bitmap[128];
+    u32 root_inode, inode_bitmap_start, inode_bitmap_blocks;
+    u32 data_bitmap_start, data_bitmap_blocks;
+    u32 inode_table_start, inode_table_blocks, data_region_start;
+
+    if (read_superblock(backend_folder, 1024, &version, &total_blocks, &total_inodes,
+                        inode_bitmap, data_bitmap, &root_inode,
+                        &inode_bitmap_start, &inode_bitmap_blocks,
+                        &data_bitmap_start, &data_bitmap_blocks,
+                        &inode_table_start, &inode_table_blocks,
+                        &data_region_start) != 0) {
+        fprintf(stderr, "Error leyendo superbloque.\n");
+        return 1;
+    }
+
+    // Inicializar contexto
+    qrfs_ctx ctx;
+    ctx.folder = backend_folder;
+    ctx.block_size = 1024; // O leer del superbloque si está guardado
+
+    // Preparar argumentos para FUSE
+    char *fuse_argv[] = { argv[0], (char *)mount_point };
+    int fuse_argc = 2;
+
+    return fuse_main(fuse_argc, fuse_argv, &qrfs_ops, &ctx);
+}
+
+
