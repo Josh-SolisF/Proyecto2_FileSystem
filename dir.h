@@ -8,7 +8,7 @@ void list_directory_block(const char *folder, u32 block_size, u32 dir_block_inde
 
 int add_dir_entry_to_block(unsigned char *block, u32 block_size, const dir_entry *entry);
 int write_directory_block(const char *folder, u32 block_index, const unsigned char *block, u32 block_size);
-
+u32 search_inode_by_path(const char *folder, const char *path, u32 block_size) ;
 int find_parent_dir_block(const char *path, u32 *block_index);
 
 #endif
