@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
-
+#include <sys/stat.h>
 
 #define ROOT_INODE 0
 

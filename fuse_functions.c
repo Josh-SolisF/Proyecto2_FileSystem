@@ -4,7 +4,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
-
+#include <sys/stat.h>
 
 
 int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) {
