@@ -3,8 +3,6 @@
 #define FUSE_FUNCTIONS_H
 
 
-
-#include <fuse3/fuse.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include "fs_basic.h"
