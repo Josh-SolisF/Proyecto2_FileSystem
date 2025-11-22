@@ -23,33 +23,6 @@
 #include <inttypes.h>
 
 
-// Helper: llena struct stat desde los campos del inodo
-static void stat_fill_from_inode(struct stat *st,
-                                 u32 ino, u32 mode, u32 uid, u32 gid,
-                                 u32 links, u32 size)
-{
-    memset(st, 0, sizeof(*st));
-
-    st->st_ino   = ino;
-    st->st_mode  = mode;                       // Debe incluir S_IFDIR/S_IFREG + permisos
-    st->st_uid   = uid;
-    st->st_gid   = gid;
-    st->st_nlink = (links == 0 ? 1 : links);
-    st->st_size  = size;
-
-    // Si no guardas tiempos en el inodo, usa el tiempo actual (placeholder)
-    struct timespec now;
-    clock_gettime(CLOCK_REALTIME, &now);
-    st->st_atim = now;
-    st->st_mtim = now;
-    st->st_ctim = now;
-
-    // Para directorios, aseguremos al menos 2 enlaces (., ..)
-    if ((mode & S_IFMT) == S_IFDIR && st->st_nlink < 2) {
-        st->st_nlink = 2;
-    }
-}
-
 int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi) {
     (void)fi;
     fprintf(stderr, "[getattr] path='%s'\n", path);
