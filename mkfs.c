@@ -14,11 +14,17 @@
 #include "inode.h"
 #include "dir.h"
 #include "fuse_functions.h" // donde está qrfs_ctx y qrfs_ops
+#include <stdlib.h>
+#include <limits.h>
 
 #ifndef S_ISDIR
 #define S_ISDIR(m) (((m) & 0170000) == 0040000)
 #endif
+#include "fs_utils.h"
 
+
+#include <stdlib.h>
+#include <limits.h>
 
 
 int mkfs(int argc, char **argv) {

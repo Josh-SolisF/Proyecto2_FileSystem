@@ -2,6 +2,7 @@
 
 #define FUSE_USE_VERSION 30
 #include <fuse3/fuse.h>
+#include "fs_utils.h"
 
 #include "fuse_functions.h"
 #include <stdio.h>
