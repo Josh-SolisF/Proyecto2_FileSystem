@@ -85,26 +85,32 @@ u32 block_size   = 1024;
     // Bitmaps
     unsigned char inode_bitmap[128];
     unsigned char data_bitmap[128];
-    memset(inode_bitmap, '0', sizeof(inode_bitmap));
-    memset(data_bitmap,  '0', sizeof(data_bitmap));
 
-    u32 root_inode = 0;
-    inode_bitmap[root_inode] = '1';
 
-    data_bitmap[0] = '1'; // SB
-    for (u32 b = inode_bitmap_start; b < inode_bitmap_start + inode_bitmap_blocks; ++b) data_bitmap[b] = '1';
-    for (u32 b = data_bitmap_start;  b < data_bitmap_start + data_bitmap_blocks;  ++b) data_bitmap[b] = '1';
-    for (u32 b = inode_table_start;  b < inode_table_start + inode_table_blocks;  ++b) data_bitmap[b] = '1';
 
-    u32 root_dir_block = data_region_start;
-    data_bitmap[root_dir_block] = '1';
+unsigned char *inode_bitmap_block = (unsigned char*)calloc(1, block_size);
+unsigned char *data_bitmap_block  = (unsigned char*)calloc(1, block_size);
+if (!inode_bitmap_block || !data_bitmap_block) {
+    fprintf(stderr, "No hay memoria para buffers de bitmaps.\n");
+    free(inode_bitmap_block); free(data_bitmap_block);
+    return 1;
+}
 
-    // Escribir bitmaps
-    if (write_block(folder, inode_bitmap_start, inode_bitmap, block_size) != 0 ||
-        write_block(folder, data_bitmap_start, data_bitmap, block_size) != 0) {
-        fprintf(stderr, "Error escribiendo bitmaps.\n");
-        return 1;
-    }
+// Copia solo lo que tienes (128 bytes de ASCII '0'/'1'), el resto queda en cero
+memcpy(inode_bitmap_block, inode_bitmap, sizeof(inode_bitmap));
+memcpy(data_bitmap_block,  data_bitmap,  sizeof(data_bitmap));
+
+// Escribe BLOQUES completos
+if (write_block(folder, inode_bitmap_start, inode_bitmap_block, block_size) != 0 ||
+    write_block(folder, data_bitmap_start,  data_bitmap_block,  block_size) != 0) {
+    fprintf(stderr, "Error escribiendo bitmaps.\n");
+    free(inode_bitmap_block); free(data_bitmap_block);
+    return 1;
+}
+
+free(inode_bitmap_block);
+free(data_bitmap_block);
+
 
     //  Tabla de inodos (inodo raíz)
     unsigned char rec[128];
