@@ -113,7 +113,7 @@ int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
     }
 
     // Asignar nuevo inodo
-    int inode_id = allocate_inode(ctx);
+    int inode_id = allocate_inode();
     if (inode_id < 0) {
         return -ENOSPC; // No hay espacio para inodos
     }
@@ -129,19 +129,19 @@ int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 
     // Persistir inodo
     if (write_inode(folder, (u32)inode_id, &new_inode) != 0) {
-        free_inode(ctx, (u32)inode_id);
+        free_inode((int)inode_id);
         return -EIO;
     }
 
     // Leer bloque del directorio padre
     unsigned char *dir_block = (unsigned char*)calloc(1, block_size);
     if (!dir_block) {
-        free_inode(ctx, (u32)inode_id);
+        free_inode((int)inode_id);
         return -ENOMEM;
     }
     if (read_block(folder, parent_block, dir_block, block_size) != 0) {
         free(dir_block);
-        free_inode(ctx, (u32)inode_id);
+        free_inode((int)inode_id);
         return -EIO;
     }
 
@@ -163,7 +163,7 @@ int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
     free(dir_block);
 
     // Actualizar bitmaps (persistir en disco; idealmente usa ctx)
-    if (update_bitmaps(ctx) != 0) {
+    if (update_bitmaps(ctx->folder) != 0) {
         return -EIO;
     }
 
@@ -370,7 +370,7 @@ if (search_inode_by_path(ctx, from, &inode_id) != 0) {
     // Agregar entrada en bloque destino
     dir_entry new_entry;
     init_dir_entry(&new_entry, inode_id, to_name);
-    if (add_dir_entry_to_block(block_to, block_size, &new_entry) != 0) {
+    if (add_dir_entry_to_block(block_to, block_size, new_entry.inode_id, new_entry.name) != 0) {
         return -ENOSPC;
     }
 
