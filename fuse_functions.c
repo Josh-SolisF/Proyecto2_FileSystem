@@ -371,21 +371,20 @@ if (search_inode_by_path(ctx, from, &inode_id) != 0) {
 
 
 int qrfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-                 off_t offset, struct fuse_file_info *fi,
-                 enum fuse_readdir_flags flags)
+                 off_t offset, struct fuse_file_info *fi, enum fuse_readdir_flags flags)
 {
     (void)offset; (void)fi; (void)flags;
+    qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
+    if (!ctx) return -EIO;
 
-    // Solo soportamos el root por ahora
-    if (strcmp(path, "/") != 0)
+    // Solo soportamos raíz por ahora
+    if (strcmp(path, "/") != 0) {
         return -ENOENT;
+    }
 
-    // SIEMPRE devolver "." y ".."
+    // Emite "." y ".." únicamente, sin enumerar otros nombres
     filler(buf, ".",  NULL, 0, 0);
     filler(buf, "..", NULL, 0, 0);
-
-    // Entrada de prueba (quítala cuando listes las reales desde tus bloques)
-    filler(buf, "README.txt", NULL, 0, 0);
 
     return 0;
 }

@@ -7,6 +7,7 @@
 #include "block.h"
 #include "fuse_functions.h"
 #include <limits.h>
+#include "dir.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -16,12 +17,59 @@
 
 #define ROOT_INODE 0
 
+#define QRFS_DIR_NAME_MAX      256
+
 void init_dir_entry(dir_entry *entry, u32 inode_id, const char *name) {
     entry->inode_id = inode_id;
     strncpy(entry->name, name, sizeof(entry->name));
     entry->name[sizeof(entry->name)-1] = '\0';
 }
 
+
+// Asume u32le_write/u32le_read ya implementadas (memcpy + endian LE)
+static inline void direntry_write(unsigned char *blk, u32 offset, u32 inode, const char *name) {
+    u32le_write(inode, &blk[offset]); // 4 bytes LE
+    // nombre con terminador y padding a 256
+    size_t nlen = strnlen(name, QRFS_DIR_NAME_MAX - 1);
+    memset(&blk[offset + 4], 0, QRFS_DIR_NAME_MAX);
+    memcpy(&blk[offset + 4], name, nlen);
+}
+
+static inline void direntry_read(const unsigned char *blk, u32 offset, u32 *inode_out, char *name_out) {
+    *inode_out = u32le_read(&blk[offset]); // 4 bytes LE → u32 host
+    memcpy(name_out, &blk[offset + 4], QRFS_DIR_NAME_MAX);
+    name_out[QRFS_DIR_NAME_MAX - 1] = '\0'; // asegurar terminador
+}
+
+
+void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) {
+    memset(block, 0, block_size);
+
+    // "." en offset 0
+    direntry_write(block, 0, root_inode, ".");
+
+    // ".." en offset 260 (exactamente QRFS_DIR_ENTRY_SIZE)
+    direntry_write(block, QRFS_DIR_ENTRY_SIZE, root_inode, "..");
+}
+
+
+static int find_in_block(const unsigned char *blk, u32 block_size,
+                         const char *name, u32 *inode_out) {
+    for (u32 off = 0; off + QRFS_DIR_ENTRY_SIZE <= block_size; off += QRFS_DIR_ENTRY_SIZE) {
+        u32 ent_inode;
+        char ent_name[QRFS_DIR_NAME_MAX];
+        direntry_read(blk, off, &ent_inode, ent_name);
+        if (ent_inode == 0) continue; // slot vacío
+        if (strcmp(ent_name, name) == 0) {
+            *inode_out = ent_inode;
+            return 0;
+        }
+    }
+    return -ENOENT;
+}
+
+
+/*
 void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) {
     memset(block, 0, block_size);
     u32le_write(root_inode, &block[0]);
@@ -29,7 +77,7 @@ void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) 
     u32le_write(root_inode, &block[264]); //inode en offset 264
     strncpy((char*)&block[268], "..", 256); //nonmbre de 256 en la posicion 268
 }
-
+*/
 
 
 int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
@@ -49,8 +97,7 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
 
     while (token) {
         unsigned char in128[128];
-        int irc = read_inode_block(ctx, current_inode, in128);
-        if (irc != 0) return -ENOENT;
+        if (read_inode_block(ctx, current_inode, in128) != 0) return -ENOENT;
 
         u32 inode_number, mode, uid, gid, links, size, direct[12], indirect1;
         inode_deserialize128(in128, &inode_number, &mode, &uid, &gid,
@@ -58,29 +105,19 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
 
         if (!S_ISDIR(mode)) return -ENOTDIR;
 
+        static unsigned char block_buf[65536];
+        if (ctx->block_size > sizeof(block_buf)) return -E2BIG;
+
         int found = 0;
-        // Buffer estático para evitar alloca
-        static unsigned char block_buf[65536]; // Ajusta según el máximo block_size esperado
-        if (ctx->block_size > sizeof(block_buf)) return -E2BIG; // Protección extra
-
         for (int i = 0; i < 12 && direct[i] != 0; i++) {
-            int brc = read_block(ctx->folder, direct[i], block_buf, ctx->block_size);
-            if (brc != 0) return -EIO;
-
-            size_t entries = ctx->block_size / sizeof(dir_entry);
-            dir_entry *entries_ptr = (dir_entry *)block_buf;
-
-            for (size_t j = 0; j < entries; j++) {
-                if (entries_ptr[j].inode_id != 0 &&
-                    strcmp(entries_ptr[j].name, token) == 0) {
-                    current_inode = entries_ptr[j].inode_id;
-                    found = 1;
-                    break;
-                }
+            if (read_block(ctx->folder, direct[i], block_buf, ctx->block_size) != 0) return -EIO;
+            u32 child_inode;
+            if (find_in_block(block_buf, ctx->block_size, token, &child_inode) == 0) {
+                current_inode = child_inode;
+                found = 1;
+                break;
             }
-            if (found) break;
         }
-
         if (!found) return -ENOENT;
 
         token = strtok(NULL, "/");
