@@ -85,84 +85,85 @@ int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi
 
 }
 
-int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
-    (void) fi; // No se usa por ahora
 
-    // Recuperar contexto
+int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
+    (void)fi; // Por ahora no usamos file handle
+
+    // Contexto
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
+    if (!ctx) return -EIO;
     const char *folder = ctx->folder;
     u32 block_size = ctx->block_size;
 
-    // Parsear path para obtener nombre y directorio padre
+    // Parsear path -> parent + nombre
     char path_copy[512];
     strncpy(path_copy, path, sizeof(path_copy));
+    path_copy[sizeof(path_copy)-1] = '\0';
     char *parent_path = dirname(path_copy);
 
     char name_copy[512];
     strncpy(name_copy, path, sizeof(name_copy));
+    name_copy[sizeof(name_copy)-1] = '\0';
     char *file_name = basename(name_copy);
 
-    // Buscar bloque del directorio padre
+    // Bloque del directorio padre
     u32 parent_block;
-    if (find_parent_dir_block(parent_path, &parent_block) != 0) {
+    if (find_parent_dir_block(ctx, parent_path, &parent_block) != 0) {
         return -ENOENT; // Directorio padre no encontrado
     }
 
     // Asignar nuevo inodo
-    int inode_id = allocate_inode();
+    int inode_id = allocate_inode(ctx);
     if (inode_id < 0) {
         return -ENOSPC; // No hay espacio para inodos
     }
 
-    // Inicializar inodo
+    // Inicializar inodo REG (asegúrate que mode incluye S_IFREG)
     inode new_inode;
-    init_inode(&new_inode, inode_id, mode, 0); // Tamaño inicial = 0
+    // Si 'mode' no incluye tipo, forzamos REG | 0644
+    mode_t file_mode = (mode & S_IFMT) ? mode : (S_IFREG | 0644);
+    init_inode(&new_inode, (u32)inode_id, file_mode, 0); // Tamaño inicial = 0
     new_inode.user_id = getuid();
     new_inode.group_id = getgid();
     new_inode.links_quaintities = 1;
 
-    // Persistir inodo en disco
-    if (write_inode(folder, inode_id, &new_inode) != 0) {
-        free_inode(inode_id);
+    // Persistir inodo
+    if (write_inode(folder, (u32)inode_id, &new_inode) != 0) {
+        free_inode(ctx, (u32)inode_id);
         return -EIO;
     }
 
-    //Crear entrada de directorio
-    dir_entry entry;
-    init_dir_entry(&entry, inode_id, file_name);
-
     // Leer bloque del directorio padre
+    unsigned char *dir_block = (unsigned char*)calloc(1, block_size);
+    if (!dir_block) {
+        free_inode(ctx, (u32)inode_id);
+        return -ENOMEM;
+    }
+    if (read_block(folder, parent_block, dir_block, block_size) != 0) {
+        free(dir_block);
+        free_inode(ctx, (u32)inode_id);
+        return -EIO;
+    }
 
-// Leer bloque del directorio padre
-unsigned char *dir_block = (unsigned char*)calloc(1, block_size);
-if (!dir_block) {
-    free_inode(inode_id);
-    return -ENOMEM;
-}
-if (read_block(folder, parent_block, dir_block, block_size) != 0) {
-    free(dir_block);
-    free_inode(inode_id);
-    return -EIO;
-}
-
-// Agregar entrada al bloque (usar layout 260 bytes por entrada)
-int add_rc = add_dir_entry_to_block(dir_block, block_size, (u32)inode_id, file_name);
-if (add_rc != 0) {
-    free(dir_block);
-    free_inode(inode_id);
-    return (add_rc == -EEXIST) ? -EEXIST : -ENOSPC; // nombre duplicado o bloque lleno
-}
-
-
+    // Agregar entrada (layout 260 bytes por entrada)
+    int add_rc = add_dir_entry_to_block(dir_block, block_size, (u32)inode_id, file_name);
+    if (add_rc != 0) {
+        free(dir_block);
+        free_inode(ctx, (u32)inode_id);
+        return (add_rc == -EEXIST) ? -EEXIST : -ENOSPC;
+    }
 
     // Persistir bloque actualizado
     if (write_directory_block(folder, parent_block, dir_block, block_size) != 0) {
-        free_inode(inode_id);
+        free(dir_block);
+        free_inode(ctx, (u32)inode_id);
         return -EIO;
     }
 
-    //Actualizar bitmaps
-    if (update_bitmaps(folder) != 0) {
+    free(dir_block);
+
+    // Actualizar bitmaps (persistir en disco; idealmente usa ctx)
+    if (update_bitmaps(ctx) != 0) {
         return -EIO;
     }
 
