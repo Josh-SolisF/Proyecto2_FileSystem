@@ -149,14 +149,14 @@ int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
     int add_rc = add_dir_entry_to_block(dir_block, block_size, (u32)inode_id, file_name);
     if (add_rc != 0) {
         free(dir_block);
-        free_inode(ctx, (u32)inode_id);
+        free_inode((u32)inode_id);
         return (add_rc == -EEXIST) ? -EEXIST : -ENOSPC;
     }
 
     // Persistir bloque actualizado
     if (write_directory_block(folder, parent_block, dir_block, block_size) != 0) {
         free(dir_block);
-        free_inode(ctx, (u32)inode_id);
+        free_inode((u32)inode_id);
         return -EIO;
     }
 
