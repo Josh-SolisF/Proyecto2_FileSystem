@@ -344,8 +344,8 @@ if (search_inode_by_path(ctx, from, &inode_id) != 0) {
 
     //Bloque del directorio padre origen
     u32 from_block, to_block;
-    if (find_parent_dir_block(from_parent, &from_block) != 0) return -ENOENT;
-    if (find_parent_dir_block(to_parent, &to_block) != 0) return -ENOENT;
+    if (find_parent_dir_block(ctx,from_parent, &from_block) != 0) return -ENOENT;
+    if (find_parent_dir_block(ctx, to_parent, &to_block) != 0) return -ENOENT;
 
     unsigned char block_from[block_size];
     unsigned char block_to[block_size];

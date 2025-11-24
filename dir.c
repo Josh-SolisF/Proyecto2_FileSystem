@@ -1,6 +1,11 @@
 
 #define FUSE_USE_VERSION 31
 
+
+
+#include "fs_utils.h"
+#include <string.h>
+#include <libgen.h>
 #include "fs_basic.h"
 #include "fs_utils.h"
 #include "inode.h"
@@ -205,14 +210,36 @@ int write_directory_block(const char *folder, u32 block_index, const unsigned ch
 }
 
 
-//Solo soporta raíz y un nivel
-int find_parent_dir_block(const char *path, u32 *block_index) {
-    if (strcmp(path, "/") == 0) {
-        *block_index = 0; // Bloque raíz
+int find_parent_dir_block(qrfs_ctx *ctx,
+                          const char *parent_path,
+                          u32 *parent_block_out)
+{
+    if (!ctx || !parent_path || !parent_block_out) return -EINVAL;
+
+    // Caso raíz "/" -> bloque del directorio raíz
+    if (strcmp(parent_path, "/") == 0) {
+        *parent_block_out = ctx->root_direct[0]; // o ctx->data_region_start si así defines
         return 0;
     }
-    // Aquí deberiamos parsear el path y buscar en el directorio
-    return -1; // por el momento x
+
+    // Resolver el inodo del directorio padre
+    u32 parent_inode;
+    int rc = search_inode_by_path(ctx, parent_path, &parent_inode);
+    if (rc != 0) return rc;
+
+    // Leer el registro 128 del inodo padre
+    unsigned char in128[128];
+    rc = read_inode_block(ctx, parent_inode, in128);
+    if (rc != 0) return rc;
+
+    u32 ino, mode, uid, gid, links, size, direct[12], ind1;
+    inode_deserialize128(in128, &ino, &mode, &uid, &gid, &links, &size, direct, &ind1);
+
+    if (!S_ISDIR(mode)) return -ENOTDIR;
+    if (direct[0] == 0) return -EIO; // directorio sin bloque directo 0
+
+    *parent_block_out = direct[0];
+    return 0;
 }
 
 
