@@ -28,21 +28,25 @@
 
 
 
-
 int mkfs(int argc, char **argv) {
-const char *folder = (argc >= 3) ? argv[2] : "./qrfolder";
-u32 block_size   = 1024;
+    const char *folder = (argc >= 3) ? argv[2] : "./qrfolder";
+
+    u32 block_size   = 1024;
     u32 total_blocks = DEFAULT_TOTAL_BLOCKS;  // <=128
     u32 total_inodes = DEFAULT_TOTAL_INODES;  // <=128
 
     // Procesar argumentos opcionales
     for (int i = 2; i < argc; ++i) {
-        if (strncmp(argv[i], "--blocks=", 9) == 0) {total_blocks = (u32)strtoul(argv[i] + 9, NULL, 10);}
-        else if (strncmp(argv[i], "--inodes=", 9) == 0) {total_inodes = (u32)strtoul(argv[i] + 9, NULL, 10);}
-        else if (strncmp(argv[i], "--blocksize=", 12) == 0) {block_size = (u32)strtoul(argv[i] + 12, NULL, 10);}
+        if (strncmp(argv[i], "--blocks=", 9) == 0) {
+            total_blocks = (u32)strtoul(argv[i] + 9, NULL, 10);
+        } else if (strncmp(argv[i], "--inodes=", 9) == 0) {
+            total_inodes = (u32)strtoul(argv[i] + 9, NULL, 10);
+        } else if (strncmp(argv[i], "--blocksize=", 12) == 0) {
+            block_size = (u32)strtoul(argv[i] + 12, NULL, 10);
+        }
     }
 
-    // Esto lo podemos quitar si el profe quieremás
+    // Validaciones rápidas
     if (total_blocks > 128 || total_inodes > 128) {
         fprintf(stderr, "Por ahora mkfs.qrfs soporta como máximo 128 bloques e inodos.\n");
         return 2;
@@ -52,7 +56,7 @@ u32 block_size   = 1024;
         return 2;
     }
 
-    //  Crear carpeta y bloques
+    // Preparar carpeta y bloques "zero"
     if (ensure_folder(folder) != 0) {
         fprintf(stderr, "No se pudo preparar la carpeta destino: %s\n", strerror(errno));
         return 1;
@@ -64,11 +68,13 @@ u32 block_size   = 1024;
         }
     }
 
-    // Offsets
+    // --- Offsets / layout ---
     u32 inode_bitmap_start  = 1;
     u32 inode_bitmap_blocks = 1;
+
     u32 data_bitmap_start   = inode_bitmap_start + inode_bitmap_blocks;
     u32 data_bitmap_blocks  = 1;
+
     u32 inode_table_start   = data_bitmap_start + data_bitmap_blocks;
 
     u32 inode_record_size   = 128;
@@ -82,47 +88,76 @@ u32 block_size   = 1024;
         return 1;
     }
 
-    // Bitmaps
+    // --- Bitmaps (formato ASCII '0'/'1' de 128 bytes) ---
     unsigned char inode_bitmap[128];
     unsigned char data_bitmap[128];
+    memset(inode_bitmap, '0', sizeof(inode_bitmap));
+    memset(data_bitmap,  '0', sizeof(data_bitmap));
 
+    // Inodo raíz
+    u32 root_inode = 0;
+    inode_bitmap[root_inode] = '1';
 
+    // Marcar bloques usados en data_bitmap:
+    //   - block 0: superbloque
+    //   - rango del bitmap de inodos
+    //   - rango del bitmap de datos
+    //   - rango de la tabla de inodos
+    //   - bloque del directorio raíz (primer bloque de la región de datos)
+    data_bitmap[0] = '1'; // SB
 
-unsigned char *inode_bitmap_block = (unsigned char*)calloc(1, block_size);
-unsigned char *data_bitmap_block  = (unsigned char*)calloc(1, block_size);
-if (!inode_bitmap_block || !data_bitmap_block) {
-    fprintf(stderr, "No hay memoria para buffers de bitmaps.\n");
-    free(inode_bitmap_block); free(data_bitmap_block);
-    return 1;
-}
+    for (u32 b = inode_bitmap_start; b < inode_bitmap_start + inode_bitmap_blocks; ++b) {
+        data_bitmap[b] = '1';
+    }
+    for (u32 b = data_bitmap_start; b < data_bitmap_start + data_bitmap_blocks; ++b) {
+        data_bitmap[b] = '1';
+    }
+    for (u32 b = inode_table_start; b < inode_table_start + inode_table_blocks; ++b) {
+        data_bitmap[b] = '1';
+    }
 
-// Copia solo lo que tienes (128 bytes de ASCII '0'/'1'), el resto queda en cero
-memcpy(inode_bitmap_block, inode_bitmap, sizeof(inode_bitmap));
-memcpy(data_bitmap_block,  data_bitmap,  sizeof(data_bitmap));
+    u32 root_dir_block = data_region_start;
+    data_bitmap[root_dir_block] = '1';
 
-// Escribe BLOQUES completos
-if (write_block(folder, inode_bitmap_start, inode_bitmap_block, block_size) != 0 ||
-    write_block(folder, data_bitmap_start,  data_bitmap_block,  block_size) != 0) {
-    fprintf(stderr, "Error escribiendo bitmaps.\n");
-    free(inode_bitmap_block); free(data_bitmap_block);
-    return 1;
-}
+    // --- Escribir bitmaps como BLOQUES completos (evita overflow) ---
+    unsigned char *inode_bitmap_block = (unsigned char*)calloc(1, block_size);
+    unsigned char *data_bitmap_block  = (unsigned char*)calloc(1, block_size);
+    if (!inode_bitmap_block || !data_bitmap_block) {
+        fprintf(stderr, "No hay memoria para buffers de bitmaps.\n");
+        free(inode_bitmap_block); free(data_bitmap_block);
+        return 1;
+    }
 
-free(inode_bitmap_block);
-free(data_bitmap_block);
+    memcpy(inode_bitmap_block, inode_bitmap, sizeof(inode_bitmap));
+    memcpy(data_bitmap_block,  data_bitmap,  sizeof(data_bitmap));
 
+    if (write_block(folder, inode_bitmap_start, inode_bitmap_block, block_size) != 0 ||
+        write_block(folder, data_bitmap_start,  data_bitmap_block,  block_size) != 0) {
+        fprintf(stderr, "Error escribiendo bitmaps.\n");
+        free(inode_bitmap_block); free(data_bitmap_block);
+        return 1;
+    }
 
-    //  Tabla de inodos (inodo raíz)
+    free(inode_bitmap_block);
+    free(data_bitmap_block);
+
+    // --- Tabla de inodos (registro del inodo raíz en el primer bloque de la tabla) ---
     unsigned char rec[128];
     u32 direct[12] = {0};
     direct[0] = root_dir_block;
+
     u32 mode_dir = 0040000 | 0755; // S_IFDIR | 0755
     u32 dir_size = 520;
 
+    // uid=0, gid=0, links=2 ('.' y '..'), size=dir_size, direct[], indirect=0
     inode_serialize128(rec, root_inode, mode_dir, 0, 0, 2, dir_size, direct, 0);
 
     unsigned char *itbl_block0 = (unsigned char*)calloc(1, block_size);
-    memcpy(itbl_block0, rec, 128);
+    if (!itbl_block0) {
+        fprintf(stderr, "No hay memoria para itbl_block0.\n");
+        return 1;
+    }
+    memcpy(itbl_block0, rec, sizeof(rec));
     if (write_block(folder, inode_table_start, itbl_block0, block_size) != 0) {
         fprintf(stderr, "Error escribiendo tabla de inodos.\n");
         free(itbl_block0);
@@ -130,8 +165,12 @@ free(data_bitmap_block);
     }
     free(itbl_block0);
 
-    // Directorio raíz
+    // --- Directorio raíz (contenido del bloque de dir) ---
     unsigned char *dirblk = (unsigned char*)calloc(1, block_size);
+    if (!dirblk) {
+        fprintf(stderr, "No hay memoria para dirblk.\n");
+        return 1;
+    }
     build_root_dir_block(dirblk, block_size, root_inode);
     if (write_block(folder, root_dir_block, dirblk, block_size) != 0) {
         fprintf(stderr, "Error escribiendo directorio raíz.\n");
@@ -140,7 +179,7 @@ free(data_bitmap_block);
     }
     free(dirblk);
 
-    // Superbloque
+    // --- Superbloque ---
     if (write_superblock_with_offsets(folder, block_size, total_blocks, total_inodes,
                                       inode_bitmap, data_bitmap, root_inode,
                                       inode_bitmap_start, inode_bitmap_blocks,
@@ -151,7 +190,7 @@ free(data_bitmap_block);
         return 1;
     }
 
-    //Reporte
+    // --- Reporte ---
     printf("QRFS creado en '%s'\n", folder);
     printf("block_size=%u, total_blocks=%u, total_inodes=%u\n", block_size, total_blocks, total_inodes);
     printf("Layout:\n");
