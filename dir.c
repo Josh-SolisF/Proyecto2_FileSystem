@@ -175,17 +175,28 @@ void list_directory_block(const char *folder, u32 block_size, u32 dir_block_inde
 }
 
 
-int add_dir_entry_to_block(unsigned char *block, u32 block_size, const dir_entry *entry) {
-    u32 max_entries = block_size / sizeof(dir_entry);
-    dir_entry *entries = (dir_entry *)block;
 
-    for (u32 i = 0; i < max_entries; i++) {
-        if (entries[i].inode_id == 0) { // Espacio libre
-            entries[i] = *entry;
+
+
+int add_dir_entry_to_block(unsigned char *blk, u32 block_size, u32 inode_id, const char *name) {
+    // First, reject duplicate names
+    for (u32 off = 0; off + QRFS_DIR_ENTRY_SIZE <= block_size; off += QRFS_DIR_ENTRY_SIZE) {
+        u32 ent_inode; char ent_name[QRFS_DIR_NAME_MAX];
+        direntry_read(blk, off, &ent_inode, ent_name);
+        if (ent_inode != 0 && strcmp(ent_name, name) == 0) {
+            return -EEXIST; // name already present
+        }
+    }
+    // Find a free slot (inode == 0)
+    for (u32 off = 0; off + QRFS_DIR_ENTRY_SIZE <= block_size; off += QRFS_DIR_ENTRY_SIZE) {
+        u32 ent_inode; char ent_name[QRFS_DIR_NAME_MAX];
+        direntry_read(blk, off, &ent_inode, ent_name);
+        if (ent_inode == 0) {
+            direntry_write(blk, off, inode_id, name);
             return 0;
         }
     }
-    return -1; // No hay espacio
+    return -ENOSPC; // no free entry
 }
 
 
@@ -203,3 +214,5 @@ int find_parent_dir_block(const char *path, u32 *block_index) {
     // Aquí deberiamos parsear el path y buscar en el directorio
     return -1; // por el momento x
 }
+
+

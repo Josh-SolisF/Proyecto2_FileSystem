@@ -7,6 +7,8 @@
 
 #include "fuse_functions.h"
 #include <stdio.h>
+#include <stdlib.h>
+
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -130,17 +132,28 @@ int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
     init_dir_entry(&entry, inode_id, file_name);
 
     // Leer bloque del directorio padre
-    unsigned char dir_block[block_size];
-    if (read_block(folder, parent_block, dir_block, block_size) != 0) {
-        free_inode(inode_id);
-        return -EIO;
-    }
 
-    // Agregar entrada al bloque
-    if (add_dir_entry_to_block(dir_block, block_size, &entry) != 0) {
-        free_inode(inode_id);
-        return -ENOSPC; // Directorio lleno
-    }
+// Leer bloque del directorio padre
+unsigned char *dir_block = (unsigned char*)calloc(1, block_size);
+if (!dir_block) {
+    free_inode(inode_id);
+    return -ENOMEM;
+}
+if (read_block(folder, parent_block, dir_block, block_size) != 0) {
+    free(dir_block);
+    free_inode(inode_id);
+    return -EIO;
+}
+
+// Agregar entrada al bloque (usar layout 260 bytes por entrada)
+int add_rc = add_dir_entry_to_block(dir_block, block_size, (u32)inode_id, file_name);
+if (add_rc != 0) {
+    free(dir_block);
+    free_inode(inode_id);
+    return (add_rc == -EEXIST) ? -EEXIST : -ENOSPC; // nombre duplicado o bloque lleno
+}
+
+
 
     // Persistir bloque actualizado
     if (write_directory_block(folder, parent_block, dir_block, block_size) != 0) {
