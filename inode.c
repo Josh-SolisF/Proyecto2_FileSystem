@@ -7,7 +7,11 @@
 
 #include "inode.h"
 #include "block.h"
-
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <libgen.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
