@@ -32,7 +32,7 @@ void init_dir_entry(dir_entry *entry, u32 inode_id, const char *name) {
 
 
 // Asume u32le_write/u32le_read ya implementadas (memcpy + endian LE)
-static inline void direntry_write(unsigned char *blk, u32 offset, u32 inode, const char *name) {
+void direntry_write(unsigned char *blk, u32 offset, u32 inode, const char *name) {
     u32le_write(inode, &blk[offset]); // 4 bytes LE
     // nombre con terminador y padding a 256
     size_t nlen = strnlen(name, QRFS_DIR_NAME_MAX - 1);
@@ -40,7 +40,7 @@ static inline void direntry_write(unsigned char *blk, u32 offset, u32 inode, con
     memcpy(&blk[offset + 4], name, nlen);
 }
 
-static inline void direntry_read(const unsigned char *blk, u32 offset, u32 *inode_out, char *name_out) {
+void direntry_read(const unsigned char *blk, u32 offset, u32 *inode_out, char *name_out) {
     *inode_out = u32le_read(&blk[offset]); // 4 bytes LE → u32 host
     memcpy(name_out, &blk[offset + 4], QRFS_DIR_NAME_MAX);
     name_out[QRFS_DIR_NAME_MAX - 1] = '\0'; // asegurar terminador

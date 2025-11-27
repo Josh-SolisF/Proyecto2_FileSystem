@@ -18,8 +18,8 @@ int find_parent_dir_block(qrfs_ctx *ctx,
                           const char *parent_path,
                           u32 *parent_block_out);
 ;
-static inline void direntry_write(unsigned char *blk, uint32_t offset, uint32_t inode, const char *name);
-static inline void direntry_read(const unsigned char *blk, uint32_t offset, uint32_t *inode_out, char *name_out) ;
+void direntry_write(unsigned char *blk, uint32_t offset, uint32_t inode, const char *name);
+void direntry_read(const unsigned char *blk, uint32_t offset, uint32_t *inode_out, char *name_out) ;
 
 
 #endif

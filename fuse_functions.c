@@ -352,7 +352,7 @@ int qrfs_write(const char *path, const char *buf, size_t size, off_t offset, str
 
 
 
-static int find_dir_entry_in_block(const unsigned char *blk, u32 block_size,
+int find_dir_entry_in_block(const unsigned char *blk, u32 block_size,
                                    const char *name, u32 *inode_id_out,
                                    u32 *offset_out)
 {
