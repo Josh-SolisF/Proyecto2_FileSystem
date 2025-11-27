@@ -211,8 +211,14 @@ int qrfs_read(const char *path, char *buf, size_t size, off_t offset, struct fus
     if (!ctx) return -EIO;
 
     u32 inode_id = (u32)fi->fh;
+
+    unsigned char raw[128];
+    if (read_inode_block(ctx, inode_id, raw) != 0) return -EIO;
+
     inode node;
-    if (read_inode(ctx->folder, inode_id, &node) != 0) return -EIO;
+    inode_deserialize128(raw, &node.inode_number, &node.inode_mode,
+                         &node.user_id, &node.group_id, &node.links_quaintities,
+                         &node.inode_size, node.direct, &node.indirect1);
 
     if ((node.inode_mode & S_IFMT) != S_IFREG) return -EISDIR;
     if ((u32)offset >= node.inode_size) return 0;
@@ -265,36 +271,57 @@ int qrfs_write(const char *path, const char *buf, size_t size, off_t offset, str
     u32 block_size = ctx->block_size;
     u32 inode_id = (u32)fi->fh;
 
+    // Leer inodo desde la tabla QRFS
+    unsigned char raw[128];
+    if (read_inode_block(ctx, inode_id, raw) != 0) return -EIO;
+
     inode node;
-    if (read_inode(folder, inode_id, &node) != 0) return -EIO;
+    inode_deserialize128(raw, &node.inode_number, &node.inode_mode,
+                         &node.user_id, &node.group_id, &node.links_quaintities,
+                         &node.inode_size, node.direct, &node.indirect1);
+
+    // Validar tipo de archivo
+    if ((node.inode_mode & S_IFMT) != S_IFREG) return -EISDIR;
 
     size_t bytes_written = 0;
     size_t remaining = size;
     size_t current_offset = offset;
 
+    // Calcular bloque inicial y offset dentro del bloque
     u32 start_block = current_offset / block_size;
     u32 block_offset = current_offset % block_size;
 
     unsigned char *block = (unsigned char*)calloc(1, block_size);
     if (!block) return -ENOMEM;
 
+    // Escribir en bloques directos
     for (u32 i = start_block; i < 12 && remaining > 0; i++) {
+        // Si el bloque no existe, asignarlo
         if (node.direct[i] == 0) {
             int new_block = allocate_block();
-            if (new_block < 0) break;
+            if (new_block < 0) break; // No hay espacio
             node.direct[i] = new_block;
+
+            // Inicializar bloque vacío
+            if (create_zero_block(folder, node.direct[i], block_size) != 0) {
+                free(block);
+                return -EIO;
+            }
         }
 
+        // Leer bloque actual
         if (read_block(folder, node.direct[i], block, block_size) != 0) {
             free(block);
             return -EIO;
         }
 
+        // Calcular cuánto escribir
         size_t to_write = block_size - block_offset;
         if (to_write > remaining) to_write = remaining;
 
         memcpy(block + block_offset, buf + bytes_written, to_write);
 
+        // Escribir bloque actualizado
         if (write_block(folder, node.direct[i], block, block_size) != 0) {
             free(block);
             return -EIO;
@@ -302,20 +329,27 @@ int qrfs_write(const char *path, const char *buf, size_t size, off_t offset, str
 
         bytes_written += to_write;
         remaining -= to_write;
-        block_offset = 0;
+        block_offset = 0; // Solo aplica al primer bloque
     }
 
     free(block);
 
-    if ((u32)(offset + bytes_written) > node.inode_size) node.inode_size = offset + bytes_written;
+    // Actualizar tamaño y timestamps
+    if ((u32)(offset + bytes_written) > node.inode_size)
+        node.inode_size = offset + bytes_written;
+
     now_timespec(&node.last_modification_time);
     now_timespec(&node.metadata_last_change_time);
 
+    // Persistir inodo actualizado
     if (write_inode(ctx, inode_id, &node) != 0) return -EIO;
+
+    // Actualizar bitmaps
     if (update_bitmaps(folder) != 0) return -EIO;
 
     return bytes_written;
 }
+
 
 
 
