@@ -245,88 +245,88 @@ int qrfs_read(const char *path, char *buf, size_t size, off_t offset, struct fus
 
 
 
-int qrfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+
+int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
+    (void)fi;
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
+    if (!ctx) return -EIO;
     const char *folder = ctx->folder;
     u32 block_size = ctx->block_size;
 
-    u32 inode_id = (u32)fi->fh;
+    // Parse path
+    char path_copy[512];
+    strncpy(path_copy, path, sizeof(path_copy));
+    path_copy[sizeof(path_copy)-1] = '\0';
+    char *parent_path = dirname(path_copy);
 
-    // Leer inodo
-    inode node;
-    if (read_inode(folder, inode_id, &node) != 0) {
+    char name_copy[512];
+    strncpy(name_copy, path, sizeof(name_copy));
+    name_copy[sizeof(name_copy)-1] = '\0';
+    char *file_name = basename(name_copy);
+
+    // Find parent dir block
+    u32 parent_block;
+    if (find_parent_dir_block(ctx, parent_path, &parent_block) != 0) {
+        return -ENOENT;
+    }
+
+    // Allocate inode
+    int inode_id = allocate_inode();
+    if (inode_id < 0) return -ENOSPC;
+
+    // Allocate data block
+    int data_block = allocate_block();
+    if (data_block < 0) {
+        free_inode(inode_id);
+        return -ENOSPC;
+    }
+
+    // Create PNG for data block
+    if (create_zero_block(folder, (u32)data_block, block_size) != 0) {
+        free_block(data_block);
+        free_inode(inode_id);
         return -EIO;
     }
 
-    size_t bytes_written = 0;
-    size_t remaining = size;
-    size_t current_offset = offset;
+    // Init inode
+    inode new_inode;
+    mode_t file_mode = (mode & S_IFMT) ? mode : (S_IFREG | 0644);
+    init_inode(&new_inode, (u32)inode_id, file_mode, 0);
+    new_inode.user_id = getuid();
+    new_inode.group_id = getgid();
+    new_inode.links_quaintities = 1;
+    new_inode.direct[0] = (u32)data_block;
 
-    // Calcular bloque inicial y desplazamiento
-    u32 start_block = current_offset / block_size;
-    u32 block_offset = current_offset % block_size;
-
-    unsigned char block[block_size];
-
-    for (u32 i = start_block; i < 12 && remaining > 0; i++) {
-        // Si el bloque no existe, asignarlo
-        if (node.direct[i] == 0) {
-            int new_block = allocate_block();
-
-if (new_block < 0) {
-    free_inode(inode_id);
-    return -ENOSPC;
-}
-if (create_zero_block(folder, (u32)new_block, block_size) != 0) {
-    free_block(new_block);
-    free_inode(inode_id);
-    return -EIO;
-}
-
-
-            if (new_block < 0) {
-                break; // No hay espacio
-            }
-            node.direct[i] = new_block;
-        }
-
-        // Leer bloque actual (para no sobrescribir datos previos)
-        if (read_block(folder, node.direct[i], block, block_size) != 0) {
-            return -EIO;
-        }
-
-        // Calcular cuánto escribir en este bloque
-        size_t to_write = block_size - block_offset;
-        if (to_write > remaining) to_write = remaining;
-
-        memcpy(block + block_offset, buf + bytes_written, to_write);
-
-        // Escribir bloque actualizado
-        if (write_block(folder, node.direct[i], block, block_size) != 0) {
-            return -EIO;
-        }
-
-        bytes_written += to_write;
-        remaining -= to_write;
-        block_offset = 0; // Solo aplica al primer bloque
-    }
-
-    // Actualizar tamaño del archivo si creció
-    if ((u32)(offset + bytes_written) > node.inode_size) {
-        node.inode_size = offset + bytes_written;
-    }
-
-    // Persistir inodo actualizado
-    if (write_inode(folder, inode_id, &node) != 0) {
+    // Persist inode
+    if (write_inode(folder, (u32)inode_id, &new_inode) != 0) {
+        free_block(data_block);
+        free_inode(inode_id);
         return -EIO;
     }
 
-    // Actualizar bitmaps
-    if (update_bitmaps(folder) != 0) {
+    // Update parent dir block
+    unsigned char *dir_block = (unsigned char*)calloc(1, block_size);
+    if (!dir_block) return -ENOMEM;
+    if (read_block(folder, parent_block, dir_block, block_size) != 0) {
+        free(dir_block);
         return -EIO;
     }
+    int add_rc = add_dir_entry_to_block(dir_block, block_size, (u32)inode_id, file_name);
+    if (add_rc != 0) {
+        free(dir_block);
+        return (add_rc == -EEXIST) ? -EEXIST : -ENOSPC;
+    }
+    if (write_directory_block(folder, parent_block, dir_block, block_size) != 0) {
+        free(dir_block);
+        return -EIO;
+    }
+    free(dir_block);
 
-    return bytes_written; // Número de bytes escritos
+    // Mark bitmap and persist
+    spblock.data_bitmap[data_block] = '1';
+    if (update_bitmaps(ctx->folder) != 0) return -EIO;
+
+    return 0;
 }
 
 
