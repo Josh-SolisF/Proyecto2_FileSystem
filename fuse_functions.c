@@ -352,15 +352,6 @@ int qrfs_write(const char *path, const char *buf, size_t size, off_t offset, str
 
 
 
-#include "fs_basic.h"
-#include "fuse_functions.h"
-#include "dir.h"
-#include "block.h"
-#include "inode.h"
-#include <string.h>
-#include <libgen.h>
-#include <errno.h>
-
 static int find_dir_entry_in_block(const unsigned char *blk, u32 block_size,
                                    const char *name, u32 *inode_id_out,
                                    u32 *offset_out)
