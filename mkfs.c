@@ -277,7 +277,6 @@ int fsck_qrfs(const char *folder) {
 
 
 
-
 int mount_qrfs(int argc, char **argv) {
     if (argc < 4) {
         fprintf(stderr, "Uso: %s --mount <backend_folder> <mount_point>\n", argv[0]);
@@ -286,15 +285,14 @@ int mount_qrfs(int argc, char **argv) {
 
     char backend_abs[PATH_MAX], mount_abs[PATH_MAX];
 
-
-if (!realpath(argv[2], backend_abs)) {
-    perror("No pude resolver ruta absoluta del backend_folder");
-    return 1;
-}
-if (!realpath(argv[3], mount_abs)) {
-    perror("No pude resolver ruta absoluta del mount_point");
-    return 1;
-}
+    if (!realpath(argv[2], backend_abs)) {
+        perror("No pude resolver ruta absoluta del backend_folder");
+        return 1;
+    }
+    if (!realpath(argv[3], mount_abs)) {
+        perror("No pude resolver ruta absoluta del mount_point");
+        return 1;
+    }
 
     struct stat st;
     if (stat(mount_abs, &st) != 0 || !S_ISDIR(st.st_mode)) {
@@ -314,7 +312,7 @@ if (!realpath(argv[3], mount_abs)) {
     }
 
     ctx->folder = strdup(backend_abs);
-    ctx->block_size = 1024; // OJO: si se almacena en el superblock, léelo de allí.
+    ctx->block_size = 1024; // Ideal: leerlo del superbloque
 
     u32 version, total_blocks, total_inodes;
     unsigned char inode_bitmap[128], data_bitmap[128];
@@ -351,14 +349,14 @@ if (!realpath(argv[3], mount_abs)) {
     ctx->data_region_start = data_region_start;
     ctx->root_inode = root_inode;
 
-
-spblock.version = version;
-spblock.blocksize = ctx->block_size;
-spblock.total_blocks = total_blocks;
-spblock.total_inodes = total_inodes;
-spblock.root_inode = root_inode;
-memcpy(spblock.inode_bitmap, inode_bitmap, sizeof(spblock.inode_bitmap));
-
+    // Copiar datos al superbloque global
+    spblock.version = version;
+    spblock.blocksize = ctx->block_size;
+    spblock.total_blocks = total_blocks;
+    spblock.total_inodes = total_inodes;
+    spblock.root_inode = root_inode;
+    memcpy(spblock.inode_bitmap, inode_bitmap, sizeof(spblock.inode_bitmap));
+    memcpy(spblock.data_bitmap, data_bitmap, sizeof(spblock.data_bitmap)); // <-- FALTABA ESTO
 
     // Chequeos básicos
     if (ctx->block_size == 0 || (ctx->block_size % 128) != 0) {
@@ -382,9 +380,7 @@ memcpy(spblock.inode_bitmap, inode_bitmap, sizeof(spblock.inode_bitmap));
 
     // Leer inodo raíz
     unsigned char in128[128];
-
-rc = read_inode_block(ctx, ctx->root_inode, in128);
-
+    rc = read_inode_block(ctx, ctx->root_inode, in128);
     if (rc != 0) {
         fprintf(stderr, "[mount] Falló read_inode_block(root=%u).\n", ctx->root_inode);
         free(ctx->folder);
@@ -418,13 +414,8 @@ rc = read_inode_block(ctx, ctx->root_inode, in128);
             ctx->root_inode_number, ctx->root_size, ctx->root_links, ctx->root_uid, ctx->root_gid);
 
     // Preparar argumentos para FUSE
-
-char *fuse_argv[] = { "qrfs", "-f", "-d", "-s", mount_abs };
-
-int fuse_argc = (int)(sizeof(fuse_argv) / sizeof(fuse_argv[0]));
-
-
-
+    char *fuse_argv[] = { "qrfs", "-f", "-d", "-s", mount_abs };
+    int fuse_argc = (int)(sizeof(fuse_argv) / sizeof(fuse_argv[0]));
 
     // Lanzar FUSE con el contexto
     int ret = fuse_main(fuse_argc, fuse_argv, &qrfs_ops, ctx);
