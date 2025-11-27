@@ -10,9 +10,9 @@
 
 #include <sys/types.h>
 
-#include <sys/stat.h>  // define struct stat, S_ISDIR
+#include <sys/stat.h>
 
-#include <unistd.h>    // access(), etc.
+#include <unistd.h>
 
 
 #include "fuse_functions.h"

@@ -1,5 +1,7 @@
 #include "fs_basic.h"
 #include "superblock.h"
+#include "fs_utils.h"
+
 
 #define FUSE_USE_VERSION 31
 
@@ -36,7 +38,21 @@ void free_block(int block_num) {
 }
 
 
+
 int update_bitmaps(const char *folder) {
+    u32 inode_bitmap_start  = 1;
+    u32 inode_bitmap_blocks = 1;
+
+    u32 data_bitmap_start   = inode_bitmap_start + inode_bitmap_blocks;
+    u32 data_bitmap_blocks  = 1;
+
+    u32 inode_table_start   = data_bitmap_start + data_bitmap_blocks;
+    u32 inode_record_size   = 128;
+    u32 inode_table_bytes   = spblock.total_inodes * inode_record_size;
+    u32 inode_table_blocks  = ceil_div(inode_table_bytes, spblock.blocksize);
+
+    u32 data_region_start   = inode_table_start + inode_table_blocks;
+
     return write_superblock_with_offsets(
         folder,
         spblock.blocksize,
@@ -45,7 +61,10 @@ int update_bitmaps(const char *folder) {
         (unsigned char *)spblock.inode_bitmap,
         (unsigned char *)spblock.data_bitmap,
         spblock.root_inode,
-        /* offsets: ajusta según tu diseño */
-        1, 1, 2, 1, 3, spblock.total_inodes, 3 + spblock.total_inodes
+        inode_bitmap_start, inode_bitmap_blocks,
+        data_bitmap_start,  data_bitmap_blocks,
+        inode_table_start,  inode_table_blocks,
+        data_region_start
     );
 }
+
