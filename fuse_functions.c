@@ -422,6 +422,9 @@ int qrfs_rename(const char *from, const char *to, unsigned int flags) {
         return -ENOENT; // no existe el origen
     }
 
+fprintf(stderr, "[RENAME] from='%s' to='%s'\n", from_name, to_name);
+fprintf(stderr, "[RENAME] dir_block=%u\n", dir_block_index);
+
     // Comprobar si destino ya existe (política: no sobrescribir)
     u32 dst_inode_id = 0, dst_offset = 0;
     int dst_exists = (find_dir_entry_in_block(dir_blk, block_size, to_name, &dst_inode_id, &dst_offset) == 0);
