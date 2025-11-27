@@ -84,52 +84,44 @@ void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) 
 }
 */
 
-
 int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
     if (!ctx || !path || !inode_id_out) return -EINVAL;
 
+    // Solo soportamos raíz por ahora
     if (strcmp(path, "/") == 0) {
         *inode_id_out = ctx->root_inode;
         return 0;
     }
 
-    char tmp[PATH_MAX];
-    strncpy(tmp, path, sizeof(tmp));
-    tmp[sizeof(tmp)-1] = '\0';
+    // Obtener nombre base
+    const char *name = strrchr(path, '/');
+    name = (name) ? name + 1 : path;
 
-    char *token = strtok(tmp, "/");
-    u32 current_inode = ctx->root_inode;
+    // Leer bloque del directorio raíz
+    u32 dir_block = ctx->root_direct[0];
+    unsigned char *blk = calloc(1, ctx->block_size);
+    if (!blk) return -ENOMEM;
 
-    while (token) {
-        unsigned char in128[128];
-        if (read_inode_block(ctx, current_inode, in128) != 0) return -ENOENT;
-
-        u32 inode_number, mode, uid, gid, links, size, direct[12], indirect1;
-        inode_deserialize128(in128, &inode_number, &mode, &uid, &gid,
-                             &links, &size, direct, &indirect1);
-
-        if (!S_ISDIR(mode)) return -ENOTDIR;
-
-        static unsigned char block_buf[65536];
-        if (ctx->block_size > sizeof(block_buf)) return -E2BIG;
-
-        int found = 0;
-        for (int i = 0; i < 12 && direct[i] != 0; i++) {
-            if (read_block(ctx->folder, direct[i], block_buf, ctx->block_size) != 0) return -EIO;
-            u32 child_inode;
-            if (find_in_block(block_buf, ctx->block_size, token, &child_inode) == 0) {
-                current_inode = child_inode;
-                found = 1;
-                break;
-            }
-        }
-        if (!found) return -ENOENT;
-
-        token = strtok(NULL, "/");
+    if (read_block(ctx->folder, dir_block, blk, ctx->block_size) != 0) {
+        free(blk);
+        return -EIO;
     }
 
-    *inode_id_out = current_inode;
-    return 0;
+    // Iterar entradas
+    for (u32 offset = 0; offset + QRFS_DIR_ENTRY_SIZE <= ctx->block_size; offset += QRFS_DIR_ENTRY_SIZE) {
+        u32 inode_id;
+        char name_out[QRFS_DIR_NAME_MAX];
+        direntry_read(blk, offset, &inode_id, name_out);
+
+        if (inode_id != 0 && strcmp(name_out, name) == 0) {
+            *inode_id_out = inode_id;
+            free(blk);
+            return 0;
+        }
+    }
+
+    free(blk);
+    return -ENOENT;
 }
 
 
