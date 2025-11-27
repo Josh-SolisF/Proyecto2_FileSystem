@@ -84,20 +84,18 @@ void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) 
 }
 */
 
+
 int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
     if (!ctx || !path || !inode_id_out) return -EINVAL;
 
-    // Caso especial: raíz
     if (strcmp(path, "/") == 0) {
         *inode_id_out = ctx->root_inode;
         return 0;
     }
 
-    // Obtener nombre base
     const char *name = strrchr(path, '/');
     name = (name) ? name + 1 : path;
 
-    // Leer bloque del directorio raíz
     u32 dir_block = ctx->root_direct[0];
     unsigned char *blk = calloc(1, ctx->block_size);
     if (!blk) return -ENOMEM;
@@ -107,7 +105,6 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
         return -EIO;
     }
 
-    // Iterar entradas
     for (u32 offset = 0; offset + QRFS_DIR_ENTRY_SIZE <= ctx->block_size; offset += QRFS_DIR_ENTRY_SIZE) {
         u32 inode_id;
         char name_out[QRFS_DIR_NAME_MAX];
@@ -124,10 +121,6 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
     return -ENOENT;
 }
 
-
-    free(blk);
-    return -ENOENT;
-}
 
 
 
