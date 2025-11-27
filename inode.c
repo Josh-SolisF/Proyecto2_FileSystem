@@ -63,18 +63,41 @@ void inode_deserialize128(const unsigned char in[128],
 
 
 
+
 int write_inode(const char *folder, u32 inode_id, const inode *node) {
-    unsigned char buf[128];
-    inode_serialize128(buf,
-        node->inode_number, node->inode_mode, node->user_id, node->group_id,
-        node->links_quaintities, node->inode_size, node->direct, node->indirect1);
+    if (!folder || !node) return -EINVAL;
 
-    // Calcular posición en la tabla de inodos
-    u32 inode_table_start = spblock.total_blocks - spblock.total_inodes; // Ajusta según tu diseño
-    u32 block_index = inode_table_start + inode_id;
+    // Necesitas acceso al ctx o spblock para block_size y offsets.
+    // Si no lo tienes aquí, pasa un ctx en la firma o usa spblock.*
+    u32 bs = spblock.blocksize;
+    u32 inode_table_start = /* usa spblock o pasa ctx */;
+    const u32 rec_size = 128;
 
-    return write_block(folder, block_index, buf, sizeof(buf));
+    // Serializa
+    unsigned char rec[rec_size];
+    inode_serialize128(rec,
+                       node->inode_number, node->inode_mode,
+                       node->user_id, node->group_id,
+                       node->links_quaintities, node->inode_size,
+                       node->direct, node->indirect1);
+
+    // Calcular ubicación del registro
+    u32 rec_off = inode_id * rec_size;
+    u32 blk_idx = inode_table_start + (rec_off / bs);
+    u32 off_in_blk = rec_off % bs;
+
+    // Leer bloque actual, modificar y escribir
+    unsigned char *blk = (unsigned char*)calloc(1, bs);
+    if (!blk) return -ENOMEM;
+
+    if (read_block(folder, blk_idx, blk, bs) != 0) { free(blk); return -EIO; }
+    memcpy(blk + off_in_blk, rec, rec_size);
+    if (write_block(folder, blk_idx, blk, bs) != 0) { free(blk); return -EIO; }
+
+    free(blk);
+    return 0;
 }
+
 
 
 int read_inode(const char *folder, u32 inode_id, inode *node) {

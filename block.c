@@ -85,25 +85,30 @@ int read_block(const char *folder, u32 block_index, unsigned char *buf, u32 bloc
 
 
 
-
 int read_inode_block(qrfs_ctx *ctx, u32 inode_id, unsigned char out128[128]) {
-    const u32 inodes_per_block = ctx->block_size / 128;
-    if (inodes_per_block == 0) return -1;
-    if (inode_id >= ctx->total_inodes) return -1;
+    if (!ctx || !out128) return -EINVAL;
 
-    const u32 rel_block = inode_id / inodes_per_block;
-    const u32 offset    = (inode_id % inodes_per_block) * 128;
-    const u32 abs_block = ctx->inode_table_start + rel_block;
+    const u32 rec_size = 128;
+    const u32 bs = ctx->block_size;
 
-    unsigned char block[4096];
-    if (ctx->block_size > sizeof(block)) return -1;
+    // Calcular ubicación del registro
+    u32 rec_off = inode_id * rec_size;                     // bytes desde inicio de la tabla
+    u32 blk_idx = ctx->inode_table_start + (rec_off / bs); // bloque dentro de la tabla
+    u32 off_in_blk = rec_off % bs;                         // offset dentro del bloque
 
-    if (read_block(ctx->folder, abs_block, block, ctx->block_size) != 0) {
-        return -1;
-    }
-    memcpy(out128, block + offset, 128);
+    // Leer el bloque
+    unsigned char *blk = (unsigned char*)calloc(1, bs);
+    if (!blk) return -ENOMEM;
+
+    int rc = read_block(ctx->folder, blk_idx, blk, bs);
+    if (rc != 0) { free(blk); return -EIO; }
+
+    // Extraer 128 bytes desde off_in_blk
+    memcpy(out128, blk + off_in_blk, rec_size);
+    free(blk);
     return 0;
 }
+
 
 
 

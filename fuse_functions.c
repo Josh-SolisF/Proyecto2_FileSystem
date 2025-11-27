@@ -216,13 +216,10 @@ int qrfs_read(const char *path, char *buf, size_t size, off_t offset, struct fus
 
     if ((mode & S_IFMT) != S_IFREG) return -EISDIR;
 
-    // Si offset >= tamaño → EOF
     if ((u32)offset >= file_size) return 0;
-
-    // Ajustar tamaño a leer
     if (offset + size > file_size) size = file_size - offset;
 
-    unsigned char *blk = calloc(1, ctx->block_size);
+    unsigned char *blk = (unsigned char*)calloc(1, ctx->block_size);
     if (!blk) return -ENOMEM;
 
     if (read_block(ctx->folder, direct[0], blk, ctx->block_size) != 0) {
@@ -232,8 +229,9 @@ int qrfs_read(const char *path, char *buf, size_t size, off_t offset, struct fus
 
     memcpy(buf, blk + offset, size);
     free(blk);
-    return size;
+    return (int)size;
 }
+
 
 
 

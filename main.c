@@ -32,6 +32,8 @@ int main(int argc, char *argv[]) {
         return mkfs(argc, argv);
     }
     if (argc > 1 && strcmp(argv[1], "--mount") == 0) {
+
+        setvbuf(stderr, NULL, _IONBF, 0); // stderr sin buffer
         return mount_qrfs(argc, argv);   // <-- sin "**"
     }
 
