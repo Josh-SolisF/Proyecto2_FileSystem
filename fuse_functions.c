@@ -352,69 +352,109 @@ int qrfs_write(const char *path, const char *buf, size_t size, off_t offset, str
 
 
 
+#include "fs_basic.h"
+#include "fuse_functions.h"
+#include "dir.h"
+#include "block.h"
+#include "inode.h"
+#include <string.h>
+#include <libgen.h>
+#include <errno.h>
 
-int qrfs_rename(const char *from, const char *to, unsigned int flags) {
-    qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
-    const char *folder = ctx->folder;
-    u32 block_size = ctx->block_size;
+static int find_dir_entry_in_block(const unsigned char *blk, u32 block_size,
+                                   const char *name, u32 *inode_id_out,
+                                   u32 *offset_out)
+{
+    u32 offset = 0;
+    while (offset + sizeof(dir_entry) <= block_size) {
+        u32 inode_tmp = 0;
+        char name_tmp[256] = {0};
+        direntry_read(blk, offset, &inode_tmp, name_tmp);
 
-    //Buscar inodo del archivo origen
-
-u32 inode_id;
-if (search_inode_by_path(ctx, from, &inode_id) != 0) {
+        if (inode_tmp != 0 && strcmp(name_tmp, name) == 0) {
+            if (inode_id_out) *inode_id_out = inode_tmp;
+            if (offset_out)   *offset_out   = offset;
+            return 0;
+        }
+        offset += sizeof(dir_entry);
+    }
     return -ENOENT;
 }
 
+int qrfs_rename(const char *from, const char *to, unsigned int flags) {
+    (void)flags; // ignoramos flags por simplicidad
 
-    //Parsear paths
-    char from_copy[512], to_copy[512];
+    qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
+    if (!ctx) return -EIO;
+
+    const char *folder = ctx->folder;
+    u32 block_size = ctx->block_size;
+
+    // *** Asumimos un único directorio raíz ***
+    // Normalizamos 'from' y 'to' para extraer solo el basename (sin subdirectorios)
+    char from_copy[512];
     strncpy(from_copy, from, sizeof(from_copy));
+    from_copy[sizeof(from_copy)-1] = '\0';
+    char *from_name = basename(from_copy);
+
+    char to_copy[512];
     strncpy(to_copy, to, sizeof(to_copy));
+    to_copy[sizeof(to_copy)-1] = '\0';
+    char *to_name = basename(to_copy);
 
-    char *from_parent = dirname(from_copy);
-    char *from_name   = basename(from_copy);
+    // Bloque del directorio raíz (usamos root_direct[0])
+    u32 dir_block_index = ctx->root_direct[0];
 
-    char *to_parent   = dirname(to_copy);
-    char *to_name     = basename(to_copy);
+    // Leer bloque del directorio
+    unsigned char *dir_blk = (unsigned char*)calloc(1, block_size);
+    if (!dir_blk) return -ENOMEM;
 
-    //Bloque del directorio padre origen
-    u32 from_block, to_block;
-    if (find_parent_dir_block(ctx,from_parent, &from_block) != 0) return -ENOENT;
-    if (find_parent_dir_block(ctx, to_parent, &to_block) != 0) return -ENOENT;
-
-    unsigned char block_from[block_size];
-    unsigned char block_to[block_size];
-
-    if (read_block(folder, from_block, block_from, block_size) != 0) return -EIO;
-    if (read_block(folder, to_block, block_to, block_size) != 0) return -EIO;
-
-    //Eliminar entrada en bloque origen
-    u32 max_entries = block_size / sizeof(dir_entry);
-    dir_entry *entries_from = (dir_entry *)block_from;
-    int removed = 0;
-    for (u32 i = 0; i < max_entries; i++) {
-        if (entries_from[i].inode_id == inode_id && strcmp(entries_from[i].name, from_name) == 0) {
-            entries_from[i].inode_id = 0; // Marcar como libre
-            memset(entries_from[i].name, 0, sizeof(entries_from[i].name));
-            removed = 1;
-            break;
-        }
-    }
-    if (!removed) return -ENOENT;
-
-    // Agregar entrada en bloque destino
-    dir_entry new_entry;
-    init_dir_entry(&new_entry, inode_id, to_name);
-    if (add_dir_entry_to_block(block_to, block_size, new_entry.inode_id, new_entry.name) != 0) {
-        return -ENOSPC;
+    if (read_block(folder, dir_block_index, dir_blk, block_size) != 0) {
+        free(dir_blk);
+        return -EIO;
     }
 
-    // Persistir cambios
-    if (write_directory_block(folder, from_block, block_from, block_size) != 0) return -EIO;
-    if (write_directory_block(folder, to_block, block_to, block_size) != 0) return -EIO;
+    // Buscar entrada origen
+    u32 src_inode_id = 0, src_offset = 0;
+    int rc = find_dir_entry_in_block(dir_blk, block_size, from_name, &src_inode_id, &src_offset);
+    if (rc != 0) {
+        free(dir_blk);
+        return -ENOENT; // no existe el origen
+    }
 
-    return 0; // Éxito
+    // Comprobar si destino ya existe (política: no sobrescribir)
+    u32 dst_inode_id = 0, dst_offset = 0;
+    int dst_exists = (find_dir_entry_in_block(dir_blk, block_size, to_name, &dst_inode_id, &dst_offset) == 0);
+    if (dst_exists) {
+        free(dir_blk);
+        return -EEXIST;
+    }
+
+    // Renombrar in-place: escribir el mismo inode_id con el nuevo nombre en el mismo offset
+    direntry_write(dir_blk, src_offset, src_inode_id, to_name);
+
+    // Persistir bloque de directorio
+    if (write_directory_block(folder, dir_block_index, dir_blk, block_size) != 0) {
+        free(dir_blk);
+        return -EIO;
+    }
+    free(dir_blk);
+
+    // Actualizar ctime del inodo (opcional pero recomendable)
+    unsigned char raw[128];
+    if (read_inode_block(ctx, src_inode_id, raw) == 0) {
+        inode node;
+        inode_deserialize128(raw, &node.inode_number, &node.inode_mode,
+                             &node.user_id, &node.group_id, &node.links_quaintities,
+                             &node.inode_size, node.direct, &node.indirect1);
+
+        now_timespec(&node.metadata_last_change_time);
+        write_inode(ctx, src_inode_id, &node);
+    }
+
+    return 0;
 }
+
 
 
 
