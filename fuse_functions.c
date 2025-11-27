@@ -172,6 +172,10 @@ if (write_inode(ctx, inode_id, &new_inode) != 0) {
 
 
 
+int qrfs_utimens(const char *path, const struct timespec tv[2], struct fuse_file_info *fi) {
+    return 0; // Ignorar timestamps por ahora
+}
+
 
 
 int qrfs_open(const char *path, struct fuse_file_info *fi) {
@@ -411,4 +415,5 @@ struct fuse_operations qrfs_ops = {
     .read    = qrfs_read,
     .write   = qrfs_write,
     .rename  = qrfs_rename,
+    .utimens = qrfs_utimens,
 };
