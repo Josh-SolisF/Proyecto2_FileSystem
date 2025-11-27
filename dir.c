@@ -44,6 +44,7 @@ static inline void direntry_read(const unsigned char *blk, u32 offset, u32 *inod
     *inode_out = u32le_read(&blk[offset]); // 4 bytes LE → u32 host
     memcpy(name_out, &blk[offset + 4], QRFS_DIR_NAME_MAX);
     name_out[QRFS_DIR_NAME_MAX - 1] = '\0'; // asegurar terminador
+
 }
 
 
@@ -88,14 +89,17 @@ void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) 
 int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
     if (!ctx || !path || !inode_id_out) return -EINVAL;
 
+    // Caso especial: raíz
     if (strcmp(path, "/") == 0) {
         *inode_id_out = ctx->root_inode;
         return 0;
     }
 
+    // Obtener nombre base
     const char *name = strrchr(path, '/');
     name = (name) ? name + 1 : path;
 
+    // Leer bloque del directorio raíz
     u32 dir_block = ctx->root_direct[0];
     unsigned char *blk = calloc(1, ctx->block_size);
     if (!blk) return -ENOMEM;
@@ -105,10 +109,14 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
         return -EIO;
     }
 
+    // Iterar entradas
     for (u32 offset = 0; offset + QRFS_DIR_ENTRY_SIZE <= ctx->block_size; offset += QRFS_DIR_ENTRY_SIZE) {
         u32 inode_id;
         char name_out[QRFS_DIR_NAME_MAX];
         direntry_read(blk, offset, &inode_id, name_out);
+
+        // Depuración opcional
+         fprintf(stderr, "[SEARCH] Comparando '%s' con '%s'\n", name_out, name);
 
         if (inode_id != 0 && strcmp(name_out, name) == 0) {
             *inode_id_out = inode_id;
@@ -120,6 +128,7 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
     free(blk);
     return -ENOENT;
 }
+
 
 
 

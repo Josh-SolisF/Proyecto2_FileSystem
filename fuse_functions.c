@@ -222,7 +222,6 @@ int qrfs_read(const char *path, char *buf, size_t size, off_t offset, struct fus
     // Ajustar tamaño a leer
     if (offset + size > file_size) size = file_size - offset;
 
-    // Leer bloque directo[0]
     unsigned char *blk = calloc(1, ctx->block_size);
     if (!blk) return -ENOMEM;
 
@@ -233,8 +232,7 @@ int qrfs_read(const char *path, char *buf, size_t size, off_t offset, struct fus
 
     memcpy(buf, blk + offset, size);
     free(blk);
-
-    return size; // Bytes leídos
+    return size;
 }
 
 
