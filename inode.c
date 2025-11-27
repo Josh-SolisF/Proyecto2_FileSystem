@@ -69,16 +69,15 @@ void inode_deserialize128(const unsigned char in[128],
 
 
 
-int write_inode(const char *folder, u32 inode_id, const inode *node) {
-    if (!folder || !node) return -EINVAL;
 
-    // Necesitas acceso al ctx o spblock para block_size y offsets.
-    // Si no lo tienes aquí, pasa un ctx en la firma o usa spblock.*
-    u32 bs = spblock.blocksize;
-    u32 inode_table_start = /* usa spblock o pasa ctx */;
-    const u32 rec_size = 128;
+int write_inode(qrfs_ctx *ctx, u32 inode_id, const inode *node) {
+    if (!ctx || !node) return -EINVAL;
 
-    // Serializa
+    const u32 rec_size = 128; // tamaño fijo del inodo serializado
+    const u32 bs = ctx->block_size;
+    const u32 inode_table_start = ctx->inode_table_start;
+
+    // Serializar el inodo en 128 bytes
     unsigned char rec[rec_size];
     inode_serialize128(rec,
                        node->inode_number, node->inode_mode,
@@ -86,22 +85,33 @@ int write_inode(const char *folder, u32 inode_id, const inode *node) {
                        node->links_quaintities, node->inode_size,
                        node->direct, node->indirect1);
 
-    // Calcular ubicación del registro
-    u32 rec_off = inode_id * rec_size;
-    u32 blk_idx = inode_table_start + (rec_off / bs);
-    u32 off_in_blk = rec_off % bs;
+    // Calcular ubicación del registro en la tabla
+    u32 rec_off = inode_id * rec_size;                  // offset en bytes desde inicio de la tabla
+    u32 blk_idx = inode_table_start + (rec_off / bs);   // bloque donde está el inodo
+    u32 off_in_blk = rec_off % bs;                      // offset dentro del bloque
 
-    // Leer bloque actual, modificar y escribir
-    unsigned char *blk = (unsigned char*)calloc(1, bs);
+    // Leer el bloque actual
+    unsigned char *blk = (unsigned char *)calloc(1, bs);
     if (!blk) return -ENOMEM;
 
-    if (read_block(folder, blk_idx, blk, bs) != 0) { free(blk); return -EIO; }
+    if (read_block(ctx->folder, blk_idx, blk, bs) != 0) {
+        free(blk);
+        return -EIO;
+    }
+
+    // Sobrescribir el registro del inodo en el bloque
     memcpy(blk + off_in_blk, rec, rec_size);
-    if (write_block(folder, blk_idx, blk, bs) != 0) { free(blk); return -EIO; }
+
+    // Escribir el bloque actualizado
+    if (write_block(ctx->folder, blk_idx, blk, bs) != 0) {
+        free(blk);
+        return -EIO;
+    }
 
     free(blk);
     return 0;
 }
+
 
 
 

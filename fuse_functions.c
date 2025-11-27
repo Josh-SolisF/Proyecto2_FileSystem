@@ -137,11 +137,13 @@ int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
     new_inode.direct[0] = (u32)data_block;
 
     // Persist inode
-    if (write_inode(folder, (u32)inode_id, &new_inode) != 0) {
-        free_block(data_block);
-        free_inode(inode_id);
-        return -EIO;
-    }
+
+if (write_inode(ctx, inode_id, &new_inode) != 0) {
+    free_block(data_block);
+    free_inode(inode_id);
+    return -EIO;
+}
+
 
     // Update parent dir block
     unsigned char *dir_block = (unsigned char*)calloc(1, block_size);
@@ -294,8 +296,10 @@ int qrfs_write(const char *path, const char *buf, size_t size, off_t offset, str
         node.inode_size = offset + bytes_written;
     }
 
+
+
     // Persistir inodo actualizado
-    if (write_inode(folder, inode_id, &node) != 0) {
+    if (write_inode(ctx, inode_id, &node) != 0) {
         return -EIO;
     }
 
