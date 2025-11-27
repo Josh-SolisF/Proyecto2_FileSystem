@@ -14,14 +14,14 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <libgen.h>
-
+#include <unistd.h>
 #include "block.h"       // Para read_inode_block
 #include "inode.h"          // Para inode_deserialize128
 #include "dir.h"            // Para search_inode_by_path (o fs_utils.h si la pusiste ahí)
 #include "bitmaps.h"
 #include "fs_utils.h"
 #include <sys/stat.h>
-
+#include <sys/statvfs.h>
 #include <inttypes.h>
 
 
@@ -485,6 +485,125 @@ int qrfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     return 0;
 }
 
+
+
+
+static u32 count_free_data_blocks(qrfs_ctx *ctx) {
+    u32 free_blocks = 0;
+    u32 start = ctx->data_region_start;
+    u32 end   = ctx->total_blocks;
+    u32 max_entries = sizeof(spblock.data_bitmap); // 128
+
+    for (u32 i = start; i < end && i < max_entries; ++i) {
+        if (spblock.data_bitmap[i] == '0') free_blocks++;
+    }
+    return free_blocks;
+}
+
+static u32 count_free_inodes(qrfs_ctx *ctx) {
+    u32 free_inodes = 0;
+    u32 max_inodes  = ctx->total_inodes;
+    u32 max_entries = sizeof(spblock.inode_bitmap); // 128
+
+    for (u32 i = 0; i < max_inodes && i < max_entries; ++i) {
+        if (spblock.inode_bitmap[i] == '0') free_inodes++;
+    }
+    return free_inodes;
+}
+
+int qrfs_statfs(const char *path, struct statvfs *stbuf) {
+    (void)path;
+    qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
+    if (!ctx || !stbuf) return -EIO;
+
+    memset(stbuf, 0, sizeof(*stbuf));
+
+    u32 block_size = ctx->block_size;
+    u32 total_data_blocks = (ctx->total_blocks > ctx->data_region_start)
+                          ? (ctx->total_blocks - ctx->data_region_start)
+                          : 0;
+
+    stbuf->f_bsize  = block_size;
+    stbuf->f_frsize = block_size;
+    stbuf->f_blocks = total_data_blocks;
+
+    u32 free_blocks = count_free_data_blocks(ctx);
+    stbuf->f_bfree  = free_blocks;
+    stbuf->f_bavail = free_blocks;
+
+    stbuf->f_files  = ctx->total_inodes;
+    u32 free_inodes = count_free_inodes(ctx);
+    stbuf->f_ffree  = free_inodes;
+    stbuf->f_favail = free_inodes;
+
+    stbuf->f_namemax = QRFS_DIR_NAME_MAX - 1; // 255
+
+    return 0;
+}
+
+
+
+
+int qrfs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi) {
+    (void)path; (void)isdatasync; (void)fi;
+    qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
+    if (!ctx) return -EIO;
+
+    // Opcional: persistir bitmaps por si hubo cambios recientes
+    if (update_bitmaps(ctx->folder) != 0) return -EIO;
+
+    return 0;
+}
+
+
+
+
+int qrfs_access(const char *path, int mask) {
+    qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
+    if (!ctx) return -EIO;
+
+    u32 inode_id = 0;
+    if (search_inode_by_path(ctx, path, &inode_id) != 0) {
+        return -ENOENT;
+    }
+
+    unsigned char raw[128];
+    if (read_inode_block(ctx, inode_id, raw) != 0) {
+        return -EIO;
+    }
+
+    u32 ino=0, mode=0, uid=0, gid=0, links=0, size=0, direct[12], ind1=0;
+    inode_deserialize128(raw, &ino, &mode, &uid, &gid, &links, &size, direct, &ind1);
+
+    uid_t caller_uid = fuse_get_context()->uid;
+    gid_t caller_gid = fuse_get_context()->gid;
+
+    // Determinar conjunto de permisos aplicable
+    unsigned perm_triple = 0; // r=4, w=2, x=1
+    if (caller_uid == uid) {
+        perm_triple = (mode & 0700) >> 6;
+    } else if (caller_gid == gid) {
+        perm_triple = (mode & 0070) >> 3;
+    } else {
+        perm_triple = (mode & 0007);
+    }
+
+    // Evaluar mask
+    if ((mask & R_OK) && !(perm_triple & 04)) return -EACCES;
+    if ((mask & W_OK) && !(perm_triple & 02)) return -EACCES;
+    if ((mask & X_OK) && !(perm_triple & 01)) return -EACCES;
+
+    return 0;
+}
+
+
+
+
+
+
+
+
+
 // Estructura global con operaciones
 struct fuse_operations qrfs_ops = {
     .getattr = qrfs_getattr,
@@ -498,4 +617,11 @@ struct fuse_operations qrfs_ops = {
     .rename  = qrfs_rename,
     .utimens = qrfs_utimens,
     .rmdir  = qrfs_rmdir,
+    .statfs = qrfs_statfs,
+  .fsync  = qrfs_fsync,
+  .access = qrfs_access,
+
 };
+
+
+
