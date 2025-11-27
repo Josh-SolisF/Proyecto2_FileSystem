@@ -171,19 +171,32 @@ int qrfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 
 
 
+
 int qrfs_open(const char *path, struct fuse_file_info *fi) {
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
+    if (!ctx) return -EIO;
 
-    // Buscar inodo por path
+    u32 inode_id;
+    if (search_inode_by_path(ctx, path, &inode_id) != 0) {
+        return -ENOENT;
+    }
 
-u32 inode_id;
-if (search_inode_by_path(ctx, path, &inode_id) != 0) {
-    return -ENOENT;
-}
-fi->fh = inode_id;
+    // Leer inodo para validar tipo
+    unsigned char raw[128];
+    if (read_inode_block(ctx, inode_id, raw) != 0) {
+        return -EIO;
+    }
+
+    u32 ino=0, mode=0, uid=0, gid=0, links=0, size=0, direct[12], ind1=0;
+    inode_deserialize128(raw, &ino, &mode, &uid, &gid, &links, &size, direct, &ind1);
+
+    if ((mode & S_IFMT) != S_IFREG) {
+        return -EISDIR; // No abrir directorios como archivos
+    }
 
 
-    return 0; // Éxito
+    fi->fh = inode_id; // Guardar el inodo como file handle
+    return 0;
 }
 
 
