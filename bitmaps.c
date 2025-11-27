@@ -68,3 +68,4 @@ int update_bitmaps(const char *folder) {
     );
 }
 
+

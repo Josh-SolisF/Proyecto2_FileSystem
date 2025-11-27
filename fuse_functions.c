@@ -272,6 +272,18 @@ int qrfs_write(const char *path, const char *buf, size_t size, off_t offset, str
         // Si el bloque no existe, asignarlo
         if (node.direct[i] == 0) {
             int new_block = allocate_block();
+
+if (new_block < 0) {
+    free_inode(inode_id);
+    return -ENOSPC;
+}
+if (create_zero_block(folder, (u32)new_block, block_size) != 0) {
+    free_block(new_block);
+    free_inode(inode_id);
+    return -EIO;
+}
+
+
             if (new_block < 0) {
                 break; // No hay espacio
             }
