@@ -276,6 +276,10 @@ int fsck_qrfs(const char *folder) {
 
 
 
+int qrfs_utimens(const char *path, const struct timespec tv[2], struct fuse_file_info *fi) {
+    return 0; // Ignorar timestamps por ahora
+}
+
 
 int mount_qrfs(int argc, char **argv) {
     if (argc < 4) {
