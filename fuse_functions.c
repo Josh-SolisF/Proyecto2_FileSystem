@@ -203,56 +203,38 @@ int qrfs_open(const char *path, struct fuse_file_info *fi) {
 
 int qrfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
-    const char *folder = ctx->folder;
-    u32 block_size = ctx->block_size;
+    if (!ctx) return -EIO;
 
     u32 inode_id = (u32)fi->fh;
 
     // Leer inodo
-    inode node;
-    if (read_inode(folder, inode_id, &node) != 0) {
+    unsigned char raw[128];
+    if (read_inode_block(ctx, inode_id, raw) != 0) return -EIO;
+
+    u32 ino=0, mode=0, uid=0, gid=0, links=0, file_size=0, direct[12], ind1=0;
+    inode_deserialize128(raw, &ino, &mode, &uid, &gid, &links, &file_size, direct, &ind1);
+
+    if ((mode & S_IFMT) != S_IFREG) return -EISDIR;
+
+    // Si offset >= tamaño → EOF
+    if ((u32)offset >= file_size) return 0;
+
+    // Ajustar tamaño a leer
+    if (offset + size > file_size) size = file_size - offset;
+
+    // Leer bloque directo[0]
+    unsigned char *blk = calloc(1, ctx->block_size);
+    if (!blk) return -ENOMEM;
+
+    if (read_block(ctx->folder, direct[0], blk, ctx->block_size) != 0) {
+        free(blk);
         return -EIO;
     }
 
-    // Si offset >= tamaño del archivo, no hay nada que leer
-    if ((u32)offset >= node.inode_size) {
-        return 0;
-    }
+    memcpy(buf, blk + offset, size);
+    free(blk);
 
-    // Ajustar size si excede el tamaño del archivo
-    if (offset + size > node.inode_size) {
-        size = node.inode_size - offset;
-    }
-
-    size_t bytes_read = 0;
-    size_t remaining = size;
-    size_t current_offset = offset;
-
-    // Calcular bloque inicial y desplazamiento
-    u32 start_block = current_offset / block_size;
-    u32 block_offset = current_offset % block_size;
-
-    unsigned char block[block_size];
-
-    // Leer bloques directos
-    for (u32 i = start_block; i < 12 && remaining > 0; i++) {
-        if (node.direct[i] == 0) break; // No hay más bloques
-
-        if (read_block(folder, node.direct[i], block, block_size) != 0) {
-            return -EIO;
-        }
-
-        size_t to_copy = block_size - block_offset;
-        if (to_copy > remaining) to_copy = remaining;
-
-        memcpy(buf + bytes_read, block + block_offset, to_copy);
-
-        bytes_read += to_copy;
-        remaining -= to_copy;
-        block_offset = 0; // Solo aplica al primer bloque
-    }
-
-    return bytes_read; // Número de bytes leídos
+    return size; // Bytes leídos
 }
 
 

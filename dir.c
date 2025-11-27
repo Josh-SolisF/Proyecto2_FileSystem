@@ -87,7 +87,7 @@ void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) 
 int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
     if (!ctx || !path || !inode_id_out) return -EINVAL;
 
-    // Solo soportamos raíz por ahora
+    // Caso especial: raíz
     if (strcmp(path, "/") == 0) {
         *inode_id_out = ctx->root_inode;
         return 0;
@@ -119,6 +119,11 @@ int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
             return 0;
         }
     }
+
+    free(blk);
+    return -ENOENT;
+}
+
 
     free(blk);
     return -ENOENT;
