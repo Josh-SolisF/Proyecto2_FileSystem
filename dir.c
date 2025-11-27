@@ -87,47 +87,70 @@ void build_root_dir_block(unsigned char *block, u32 block_size, u32 root_inode) 
 
 
 int search_inode_by_path(qrfs_ctx *ctx, const char *path, u32 *inode_id_out) {
-    if (!ctx || !path || !inode_id_out) return -EINVAL;
+    if (!ctx || !path || !inode_id_out) {
+        fprintf(stderr, "[SEARCH] invalid args ctx=%p path=%p inode_id_out=%p\n", (void*)ctx, (void*)path, (void*)inode_id_out);
+        fflush(stderr);
+        return -EINVAL;
+    }
 
-    // Caso especial: raíz
+    fprintf(stderr, "[SEARCH] path='%s'\n", path); fflush(stderr);
+
     if (strcmp(path, "/") == 0) {
         *inode_id_out = ctx->root_inode;
+        fprintf(stderr, "[SEARCH] root => inode=%u\n", *inode_id_out);
+        fflush(stderr);
         return 0;
     }
 
-    // Obtener nombre base
     const char *name = strrchr(path, '/');
     name = (name) ? name + 1 : path;
+    fprintf(stderr, "[SEARCH] basename='%s'\n", name); fflush(stderr);
 
-    // Leer bloque del directorio raíz
     u32 dir_block = ctx->root_direct[0];
-    unsigned char *blk = calloc(1, ctx->block_size);
-    if (!blk) return -ENOMEM;
+    fprintf(stderr, "[SEARCH] dir_block(root_direct[0])=%u\n", dir_block); fflush(stderr);
 
-    if (read_block(ctx->folder, dir_block, blk, ctx->block_size) != 0) {
+    unsigned char *blk = calloc(1, ctx->block_size);
+    if (!blk) {
+        fprintf(stderr, "[SEARCH] ENOMEM allocating %u bytes\n", ctx->block_size);
+        fflush(stderr);
+        return -ENOMEM;
+    }
+
+    int rb = read_block(ctx->folder, dir_block, blk, ctx->block_size);
+    fprintf(stderr, "[SEARCH] read_block rc=%d\n", rb); fflush(stderr);
+    if (rb != 0) {
         free(blk);
+        fprintf(stderr, "[SEARCH] read_block failed for %u\n", dir_block); fflush(stderr);
         return -EIO;
     }
 
     // Iterar entradas
     for (u32 offset = 0; offset + QRFS_DIR_ENTRY_SIZE <= ctx->block_size; offset += QRFS_DIR_ENTRY_SIZE) {
-        u32 inode_id;
+        u32 inode_id = 0;
         char name_out[QRFS_DIR_NAME_MAX];
         direntry_read(blk, offset, &inode_id, name_out);
 
-        // Depuración opcional
-         fprintf(stderr, "[SEARCH] Comparando '%s' con '%s'\n", name_out, name);
+        // Evita ruido: sólo log si la entrada tiene inodo o nombre
+        if (inode_id != 0 || name_out[0] != '\0') {
+            fprintf(stderr, "[SEARCH] off=%u inode=%u name='%s'\n", offset, inode_id, name_out);
+            fflush(stderr);
+        }
 
         if (inode_id != 0 && strcmp(name_out, name) == 0) {
             *inode_id_out = inode_id;
+            fprintf(stderr, "[SEARCH] FOUND '%s' => inode=%u at off=%u\n", name, inode_id, offset);
+            fflush(stderr);
             free(blk);
             return 0;
         }
     }
 
     free(blk);
+    fprintf(stderr, "[SEARCH] NOT FOUND '%s' in dir block=%u\n", name, dir_block);
+    fflush(stderr);
     return -ENOENT;
 }
+
 
 
 
