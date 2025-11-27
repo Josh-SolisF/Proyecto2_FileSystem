@@ -450,6 +450,103 @@ fprintf(stderr, "[RENAME] dir_block=%u\n", dir_block_index);
 }
 
 
+int qrfs_rmdir(const char *path) {
+    qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
+    if (!ctx) return -EIO;
+
+    const char *folder = ctx->folder;
+    u32 block_size = ctx->block_size;
+
+    // No permitir borrar la raíz
+    if (strcmp(path, "/") == 0) {
+        return -EBUSY;
+    }
+
+    // Extraer nombre del directorio
+    char path_copy[512];
+    strncpy(path_copy, path, sizeof(path_copy));
+    path_copy[sizeof(path_copy)-1] = '\0';
+    char *dir_name = basename(path_copy);
+
+    // Leer bloque del directorio raíz
+    u32 dir_block_index = ctx->root_direct[0];
+    unsigned char *dir_blk = (unsigned char*)calloc(1, block_size);
+    if (!dir_blk) return -ENOMEM;
+
+    if (read_block(folder, dir_block_index, dir_blk, block_size) != 0) {
+        free(dir_blk);
+        return -EIO;
+    }
+
+    // Buscar entrada
+    u32 inode_id = 0, offset = 0;
+    if (find_dir_entry_in_block(dir_blk, block_size, dir_name, &inode_id, &offset) != 0) {
+        free(dir_blk);
+        return -ENOENT; // No existe
+    }
+
+    // Leer inodo para verificar tipo
+    unsigned char raw[128];
+    if (read_inode_block(ctx, inode_id, raw) != 0) {
+        free(dir_blk);
+        return -EIO;
+    }
+
+    u32 ino=0, mode=0, uid=0, gid=0, links=0, size=0, direct[12], ind1=0;
+    inode_deserialize128(raw, &ino, &mode, &uid, &gid, &links, &size, direct, &ind1);
+
+    if ((mode & S_IFMT) != S_IFDIR) {
+        free(dir_blk);
+        return -ENOTDIR; // No es un directorio
+    }
+
+    // Verificar que está vacío
+    unsigned char *subdir_blk = (unsigned char*)calloc(1, block_size);
+    if (!subdir_blk) {
+        free(dir_blk);
+        return -ENOMEM;
+    }
+
+    if (read_block(folder, direct[0], subdir_blk, block_size) != 0) {
+        free(dir_blk);
+        free(subdir_blk);
+        return -EIO;
+    }
+
+    // Recorrer entradas
+    u32 off = 0;
+    while (off + sizeof(dir_entry) <= block_size) {
+        u32 tmp_inode = 0;
+        char tmp_name[256] = {0};
+        direntry_read(subdir_blk, off, &tmp_inode, tmp_name);
+        if (tmp_inode != 0) {
+            free(dir_blk);
+            free(subdir_blk);
+            return -ENOTEMPTY; // Tiene archivos
+        }
+        off += sizeof(dir_entry);
+    }
+
+    free(subdir_blk);
+
+    // Eliminar entrada del bloque raíz
+    direntry_write(dir_blk, offset, 0, "");
+    if (write_directory_block(folder, dir_block_index, dir_blk, block_size) != 0) {
+        free(dir_blk);
+        return -EIO;
+    }
+    free(dir_blk);
+
+    // Liberar inodo y bloque
+    free_block(direct[0]);
+    free_inode(inode_id);
+
+    // Actualizar bitmaps
+    if (update_bitmaps(folder) != 0) return -EIO;
+
+    return 0;
+}
+
 
 
 
