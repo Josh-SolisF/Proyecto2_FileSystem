@@ -351,6 +351,15 @@ if (!realpath(argv[3], mount_abs)) {
     ctx->data_region_start = data_region_start;
     ctx->root_inode = root_inode;
 
+
+spblock.version = version;
+spblock.blocksize = ctx->block_size;
+spblock.total_blocks = total_blocks;
+spblock.total_inodes = total_inodes;
+spblock.root_inode = root_inode;
+memcpy(spblock.inode_bitmap, inode_bitmap, sizeof(spblock.inode_bitmap));
+
+
     // Chequeos básicos
     if (ctx->block_size == 0 || (ctx->block_size % 128) != 0) {
         fprintf(stderr, "[mount] block_size=%u inválido.\n", ctx->block_size);

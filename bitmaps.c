@@ -22,7 +22,11 @@ void free_inode(int inode_id) {
 }
 
 int allocate_block(void) {
-    for (int i = 0; i < (int)spblock.total_blocks; i++) {
+    u32 inode_record_size = 128;
+    u32 inode_table_bytes = spblock.total_inodes * inode_record_size;
+    u32 inode_table_blocks = ceil_div(inode_table_bytes, spblock.blocksize);
+    u32 data_region_start = 1 + 1 + 1 + inode_table_blocks; // SB + inode_bitmap + data_bitmap + inode_table
+    for (int i = data_region_start; i < (int)spblock.total_blocks; i++) {
         if (spblock.data_bitmap[i] == '0') {
             spblock.data_bitmap[i] = '1';
             return i;
@@ -30,6 +34,7 @@ int allocate_block(void) {
     }
     return -1;
 }
+
 
 void free_block(int block_num) {
     if (block_num >= 0 && block_num < (int)spblock.total_blocks) {
