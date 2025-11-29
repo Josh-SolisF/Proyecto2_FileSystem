@@ -4,7 +4,7 @@
 
 
 #define FUSE_USE_VERSION 31
-
+//Busca el nodo proximo mas libre
 int allocate_inode(void) {
     for (int i = 0; i < (int)spblock.total_inodes; i++) {
         if (spblock.inode_bitmap[i] == '0') {
@@ -14,18 +14,18 @@ int allocate_inode(void) {
     }
     return -1;
 }
-
+//Desbloquea el id del nodo
 void free_inode(int inode_id) {
     if (inode_id >= 0 && inode_id < (int)spblock.total_inodes) {
         spblock.inode_bitmap[inode_id] = '0';
     }
 }
-
+//Igual que el anterior reserva el bit desocupado que encuentre primero
 int allocate_block(void) {
-    u32 inode_record_size = 128;
+    u32 inode_record_size = 128; //esto pesa cada inodo
     u32 inode_table_bytes = spblock.total_inodes * inode_record_size;
     u32 inode_table_blocks = ceil_div(inode_table_bytes, spblock.blocksize);
-    u32 data_region_start = 1 + 1 + 1 + inode_table_blocks; // SB + inode_bitmap + data_bitmap + inode_table
+    u32 data_region_start = 1 + 1 + 1 + inode_table_blocks; // SuperBlock + inode_bitmap + data_bitmap + inode_table
     for (int i = data_region_start; i < (int)spblock.total_blocks; i++) {
         if (spblock.data_bitmap[i] == '0') {
             spblock.data_bitmap[i] = '1';
@@ -43,11 +43,11 @@ void free_block(int block_num) {
 }
 
 
-
+//Recalcula el SuperBlock y los offsets de las regiones junto con los conetenidos de los bitmaps actuales
 int update_bitmaps(const char *folder) {
     u32 inode_bitmap_start  = 1;
     u32 inode_bitmap_blocks = 1;
-
+//Supoemos que cada bitmap ocupa un bloque y colomalos la tabla de inodos con tamaño baroable
     u32 data_bitmap_start   = inode_bitmap_start + inode_bitmap_blocks;
     u32 data_bitmap_blocks  = 1;
 

@@ -22,20 +22,21 @@ int write_superblock_with_offsets(
     u32 inode_table_start,  u32 inode_table_blocks,
     u32 data_region_start
 ) {
-    unsigned char *buf = (unsigned char*)calloc(1, block_size);
+    unsigned char *buf = (unsigned char*)calloc(1, block_size); //Reserva en un bufer lo llena con 0
+
     if (!buf) { errno = ENOMEM; return -1; }
 
-    buf[0]='Q'; buf[1]='R'; buf[2]='F'; buf[3]='S';
+    buf[0]='Q'; buf[1]='R'; buf[2]='F'; buf[3]='S'; //Magic
     u32le_write(1,              &buf[4]);   // version
     u32le_write(block_size,     &buf[8]);
     u32le_write(total_blocks,   &buf[12]);
     u32le_write(total_inodes,   &buf[16]);
 
-    memcpy(&buf[20],  inode_bitmap_128, 128);
+    memcpy(&buf[20],  inode_bitmap_128, 128); //bitmaps
     memcpy(&buf[148], data_bitmap_128,  128);
 
     u32le_write(root_inode, &buf[276]);
-    u32le_write(inode_bitmap_start,  &buf[280]);
+    u32le_write(inode_bitmap_start,  &buf[280]); //inodos raiz y offsets
     u32le_write(inode_bitmap_blocks, &buf[284]);
     u32le_write(data_bitmap_start,   &buf[288]);
     u32le_write(data_bitmap_blocks,  &buf[292]);
@@ -48,16 +49,11 @@ int write_superblock_with_offsets(
     return rc;
 }
 
-
-int read_superblock(const char *folder, u32 block_size,
-                    u32 *version, u32 *total_blocks, u32 *total_inodes,
-                    unsigned char inode_bitmap[128],
-                    unsigned char data_bitmap[128],
-                    u32 *root_inode,
-                    u32 *inode_bitmap_start, u32 *inode_bitmap_blocks,
-                    u32 *data_bitmap_start,  u32 *data_bitmap_blocks,
-                    u32 *inode_table_start,  u32 *inode_table_blocks,
-                    u32 *data_region_start)
+//Lee el binario del bloque 0
+int read_superblock(const char *folder, u32 block_size,u32 *version, u32 *total_blocks, u32 *total_inodes,
+                    unsigned char inode_bitmap[128],unsigned char data_bitmap[128],u32 *root_inode,
+                    u32 *inode_bitmap_start, u32 *inode_bitmap_blocks,u32 *data_bitmap_start,  u32 *data_bitmap_blocks,
+                    u32 *inode_table_start,  u32 *inode_table_blocks,u32 *data_region_start)
 {
     // Construir ruta del bloque 0
     char path[512];

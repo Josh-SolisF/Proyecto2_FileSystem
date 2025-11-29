@@ -5,12 +5,12 @@
 #define FUSE_USE_VERSION 31
 
 
-#define _DEFAULT_SOURCE           // o, alternativamente: #define _XOPEN_SOURCE 700
+#define _DEFAULT_SOURCE
 
 #include <stdio.h>
-#include <stdlib.h>               // realpath
+#include <stdlib.h>
 #include <string.h>
-#include <limits.h>               // PATH_MAX
+#include <limits.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -23,7 +23,7 @@
 #include "block.h"
 #include "inode.h"
 #include "dir.h"
-#include "fuse_functions.h" // donde está qrfs_ctx y qrfs_ops
+#include "fuse_functions.h"
 
 
 
@@ -32,10 +32,10 @@ int mkfs(int argc, char **argv) {
     const char *folder = (argc >= 3) ? argv[2] : "./qrfolder";
 
     u32 block_size   = 1024;
-    u32 total_blocks = DEFAULT_TOTAL_BLOCKS;  // <=128
-    u32 total_inodes = DEFAULT_TOTAL_INODES;  // <=128
+    u32 total_blocks = DEFAULT_TOTAL_BLOCKS;  // 128
+    u32 total_inodes = DEFAULT_TOTAL_INODES;
 
-    // Procesar argumentos opcionales
+    // Procesar argumentos (lo podriamos quitar)
     for (int i = 2; i < argc; ++i) {
         if (strncmp(argv[i], "--blocks=", 9) == 0) {
             total_blocks = (u32)strtoul(argv[i] + 9, NULL, 10);
@@ -46,7 +46,7 @@ int mkfs(int argc, char **argv) {
         }
     }
 
-    // Validaciones rápidas
+    // Validaciones para que no explote
     if (total_blocks > 128 || total_inodes > 128) {
         fprintf(stderr, "Por ahora mkfs.qrfs soporta como máximo 128 bloques e inodos.\n");
         return 2;
@@ -56,7 +56,7 @@ int mkfs(int argc, char **argv) {
         return 2;
     }
 
-    // Preparar carpeta y bloques "zero"
+    // Preparar carpeta y bloques nulos
     if (ensure_folder(folder) != 0) {
         fprintf(stderr, "No se pudo preparar la carpeta destino: %s\n", strerror(errno));
         return 1;
@@ -68,7 +68,7 @@ int mkfs(int argc, char **argv) {
         }
     }
 
-    // --- Offsets / layout ---
+    // Offsets / layout
     u32 inode_bitmap_start  = 1;
     u32 inode_bitmap_blocks = 1;
 
@@ -83,12 +83,13 @@ int mkfs(int argc, char **argv) {
 
     u32 data_region_start   = inode_table_start + inode_table_blocks;
 
+    //Para que siempre haya espacio
     if (data_region_start >= total_blocks) {
         fprintf(stderr, "No hay espacio para región de datos.\n");
         return 1;
     }
 
-    // --- Bitmaps (formato ASCII '0'/'1' de 128 bytes) ---
+    // Bitmaps
     unsigned char inode_bitmap[128];
     unsigned char data_bitmap[128];
     memset(inode_bitmap, '0', sizeof(inode_bitmap));
@@ -99,11 +100,8 @@ int mkfs(int argc, char **argv) {
     inode_bitmap[root_inode] = '1';
 
     // Marcar bloques usados en data_bitmap:
-    //   - block 0: superbloque
-    //   - rango del bitmap de inodos
-    //   - rango del bitmap de datos
-    //   - rango de la tabla de inodos
-    //   - bloque del directorio raíz (primer bloque de la región de datos)
+    // block 0: superbloque, va a tener: rango del bitmap de inodos, rango del bitmap de datos,rango de la tabla de inodos
+    // bloque del directorio raíz
     data_bitmap[0] = '1'; // SB
 
     for (u32 b = inode_bitmap_start; b < inode_bitmap_start + inode_bitmap_blocks; ++b) {
@@ -119,7 +117,7 @@ int mkfs(int argc, char **argv) {
     u32 root_dir_block = data_region_start;
     data_bitmap[root_dir_block] = '1';
 
-    // --- Escribir bitmaps como BLOQUES completos (evita overflow) ---
+    // Escribir bitmaps en bloques completos
     unsigned char *inode_bitmap_block = (unsigned char*)calloc(1, block_size);
     unsigned char *data_bitmap_block  = (unsigned char*)calloc(1, block_size);
     if (!inode_bitmap_block || !data_bitmap_block) {
@@ -141,12 +139,12 @@ int mkfs(int argc, char **argv) {
     free(inode_bitmap_block);
     free(data_bitmap_block);
 
-    // --- Tabla de inodos (registro del inodo raíz en el primer bloque de la tabla) ---
+    //Tabla de inodos ponemos la raiz en el primero
     unsigned char rec[128];
     u32 direct[12] = {0};
     direct[0] = root_dir_block;
 
-    u32 mode_dir = 0040000 | 0755; // S_IFDIR | 0755
+    u32 mode_dir = 0040000 | 0755; // S_IFDIR
     u32 dir_size = 520;
 
     // uid=0, gid=0, links=2 ('.' y '..'), size=dir_size, direct[], indirect=0
@@ -165,7 +163,7 @@ int mkfs(int argc, char **argv) {
     }
     free(itbl_block0);
 
-    // --- Directorio raíz (contenido del bloque de dir) ---
+    // Directorio raíz
     unsigned char *dirblk = (unsigned char*)calloc(1, block_size);
     if (!dirblk) {
         fprintf(stderr, "No hay memoria para dirblk.\n");
@@ -179,7 +177,7 @@ int mkfs(int argc, char **argv) {
     }
     free(dirblk);
 
-    // --- Superbloque ---
+    // SUPERbloque
     if (write_superblock_with_offsets(folder, block_size, total_blocks, total_inodes,
                                       inode_bitmap, data_bitmap, root_inode,
                                       inode_bitmap_start, inode_bitmap_blocks,
@@ -190,7 +188,7 @@ int mkfs(int argc, char **argv) {
         return 1;
     }
 
-    // --- Reporte ---
+    // Prints
     printf("QRFS creado en '%s'\n", folder);
     printf("block_size=%u, total_blocks=%u, total_inodes=%u\n", block_size, total_blocks, total_inodes);
     printf("Layout:\n");
@@ -212,7 +210,7 @@ int fsck_qrfs(const char *folder) {
     u32 root_inode;
     u32 ib_start, ib_blocks, db_start, db_blocks, it_start, it_blocks, data_start;
 
-    // Leer superbloque
+    // Lee superbloque
     if (read_superblock(folder, 1024, &version, &total_blocks, &total_inodes,
                         inode_bitmap, data_bitmap, &root_inode,
                         &ib_start, &ib_blocks, &db_start, &db_blocks,
@@ -232,7 +230,7 @@ int fsck_qrfs(const char *folder) {
         return 1;
     }
 
-    // Leer tabla de inodos (primer bloque)
+    // Leer tabla de inodos
     unsigned char buf[1024];
     if (read_block(folder, it_start, buf, 1024) != 0) {
         fprintf(stderr, "Error leyendo tabla de inodos.\n");
@@ -278,13 +276,14 @@ int fsck_qrfs(const char *folder) {
 
 
 int mount_qrfs(int argc, char **argv) {
+  //Valida argumentos
     if (argc < 4) {
         fprintf(stderr, "Uso: %s --mount <backend_folder> <mount_point>\n", argv[0]);
         return 1;
     }
-
+//Buffers para las rutas
     char backend_abs[PATH_MAX], mount_abs[PATH_MAX];
-
+//Ruta absoluta
     if (!realpath(argv[2], backend_abs)) {
         perror("No pude resolver ruta absoluta del backend_folder");
         return 1;
@@ -293,12 +292,13 @@ int mount_qrfs(int argc, char **argv) {
         perror("No pude resolver ruta absoluta del mount_point");
         return 1;
     }
-
+//Validacion del mount point
     struct stat st;
     if (stat(mount_abs, &st) != 0 || !S_ISDIR(st.st_mode)) {
         fprintf(stderr, "Mount point '%s' no existe o no es un directorio.\n", mount_abs);
         return 1;
     }
+    //permiso de escribir
     if (access(mount_abs, W_OK) != 0) {
         perror("No tengo permiso de escritura sobre el mountpoint");
         return 1;
@@ -310,10 +310,10 @@ int mount_qrfs(int argc, char **argv) {
         perror("No pude asignar memoria para el contexto");
         return 1;
     }
-
+//copiamos la ruta del contexto para asignar memoria
     ctx->folder = strdup(backend_abs);
-    ctx->block_size = 1024; // Ideal: leerlo del superbloque
-
+    ctx->block_size = 1024;
+//Variables temporales para manipular
     u32 version, total_blocks, total_inodes;
     unsigned char inode_bitmap[128], data_bitmap[128];
     u32 root_inode;
@@ -417,7 +417,7 @@ int mount_qrfs(int argc, char **argv) {
     char *fuse_argv[] = { "qrfs", "-f", "-d", "-s", mount_abs };
     int fuse_argc = (int)(sizeof(fuse_argv) / sizeof(fuse_argv[0]));
 
-    // Lanzar FUSE con el contexto
+    // Arrancar FUSE con las operaciones y el contexto
     int ret = fuse_main(fuse_argc, fuse_argv, &qrfs_ops, ctx);
 
     // Liberar recursos al desmontar

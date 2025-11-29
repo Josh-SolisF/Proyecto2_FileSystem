@@ -34,6 +34,7 @@ void init_inode(inode *node, u32 inode_id, mode_t mode, u32 size) {
     node->indirect1 = 0;
 }
 
+//convierte los campos de un inodo en un registro binario de 128 bytes para meterlo en disco.
  void inode_serialize128(unsigned char out[128],u32 inode_number, u32 inode_mode, u32 user_id, u32 group_id,
     u32 links, u32 size,const u32 direct[12], u32 indirect1) {
     memset(out, 0, 128);
@@ -48,7 +49,7 @@ void init_inode(inode *node, u32 inode_id, mode_t mode, u32 size) {
 }
 
 
-
+//Hace lo contrario lee de un registro los campos de inodo
 void inode_deserialize128(const unsigned char in[128],
     u32 *inode_number, u32 *inode_mode, u32 *user_id, u32 *group_id,
     u32 *links, u32 *size, u32 direct[12], u32 *indirect1)
@@ -67,9 +68,14 @@ void inode_deserialize128(const unsigned char in[128],
 }
 
 
-
-
-
+/*
+Actualiza un inodo en disco
+serializa la estructura en 128 bytes
+calcula su posición en la tabla de inodos (bloque y offset)
+lee el bloque correspondiente
+sobrescribe el registro del inodo
+escribe el bloque actualizado de vuelta al almacenamiento.
+ */
 int write_inode(qrfs_ctx *ctx, u32 inode_id, const inode *node) {
     if (!ctx || !node) return -EINVAL;
 
@@ -114,10 +120,10 @@ int write_inode(qrfs_ctx *ctx, u32 inode_id, const inode *node) {
 
 
 
-
+//Devuelve el inodo calculando donde esta almacenado
 int read_inode(const char *folder, u32 inode_id, inode *node) {
     unsigned char buf[128];
-    u32 inode_table_start = spblock.total_blocks - spblock.total_inodes; // Ajusta según tu diseño
+    u32 inode_table_start = spblock.total_blocks - spblock.total_inodes;
     u32 block_index = inode_table_start + inode_id;
 
     if (read_block(folder, block_index, buf, sizeof(buf)) != 0) {

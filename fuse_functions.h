@@ -28,7 +28,7 @@ typedef struct {
     char *folder;
     u32   block_size;
 
-    // Superblock fields
+    // Campo superbloque
     u32 version, total_blocks, total_inodes;
     u32 inode_bitmap_start, inode_bitmap_blocks;
     u32 data_bitmap_start,  data_bitmap_blocks;
@@ -38,7 +38,7 @@ typedef struct {
     // Root
     u32 root_inode;
 
-    // Cache root inode (opcional)
+    // Cache de los inodos
     u32 root_inode_number;
     u32 root_inode_mode;
     u32 root_uid, root_gid;

@@ -31,9 +31,7 @@ void u32le_write(u32 v, unsigned char *p) {
     p[3] = (unsigned char)((v >> 24) & 0xFF);
 }
 
-u32 u32le_read(const unsigned char *p) {
-    return ((u32)p[0]) | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
-}
+u32 u32le_read(const unsigned char *p) {    return ((u32)p[0]) | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);}
 
-
+//Cuántos bloques se ocupa para almacenar inode_table_bytes, redondeando hacia arriba para cubrir el último bloque.
 u32 ceil_div(u32 a, u32 b) {return (a + b - 1) / b;}

@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 
+//verifica si el folder existe usamos stat()
 
 int ensure_folder(const char *folder) {
     struct stat st;
@@ -21,10 +22,10 @@ int ensure_folder(const char *folder) {
     char cmd[512];
     snprintf(cmd, sizeof(cmd), "mkdir -p %s", folder);
     int rc = system(cmd);
-    (void)rc; // ignoramos el código de retorno
+    (void)rc;
     return 0;
 }
-//Bloque nulo
+//Crea un bloque nulo, osea un png vacio
 int create_zero_block(const char *folder, u32 index, u32 block_size) {
     char path[512];
     snprintf(path, sizeof(path), "%s/block_%04u.png", folder, index);
@@ -44,7 +45,7 @@ int create_zero_block(const char *folder, u32 index, u32 block_size) {
     return (w == block_size) ? 0 : -1;
 }
 
-// Escribe datos
+// Escribe datos, abre en modo lectura/escritura
 int write_block(const char *folder, u32 index, const void *buf, u32 len) {
     char path[512];
     snprintf(path, sizeof(path), "%s/block_%04u.png", folder, index);
@@ -58,8 +59,6 @@ int write_block(const char *folder, u32 index, const void *buf, u32 len) {
 }
 
 //Lee datos de un bloque
-
-
 int read_block(const char *folder, u32 block_index, unsigned char *buf, u32 block_size) {
     char path[512];
     snprintf(path, sizeof(path), "%s/block_%04u.png", folder, block_index);

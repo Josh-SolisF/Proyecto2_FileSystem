@@ -21,7 +21,7 @@
 int fsck_qrfs(const char *folder);
 int mkfs(int argc, char **argv);
 
-int mount_qrfs(int argc, char **argv);  // <-- tipos correctos
+int mount_qrfs(int argc, char **argv);
 
 
 int main(int argc, char *argv[]) {
@@ -33,8 +33,8 @@ int main(int argc, char *argv[]) {
     }
     if (argc > 1 && strcmp(argv[1], "--mount") == 0) {
 
-        setvbuf(stderr, NULL, _IONBF, 0); // stderr sin buffer
-        return mount_qrfs(argc, argv);   // <-- sin "**"
+        setvbuf(stderr, NULL, _IONBF, 0);
+        return mount_qrfs(argc, argv);
     }
 
     fprintf(stderr, "Uso: %s --mkfs <folder> | --fsck <folder> | --mount <backend_folder> <mount_point>\n", argv[0]);

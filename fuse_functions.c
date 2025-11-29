@@ -63,7 +63,7 @@ int qrfs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi
     int r_rc = read_inode_block(ctx, inode_id, raw);
     if (r_rc != 0) return -EIO;
 
-    // Deserializar inodo (retorna por parámetros)
+    // Deserializar inodo
     u32 ino=0, mode=0, uid=0, gid=0, links=0, size=0, direct[12], ind1=0;
     inode_deserialize128(raw, &ino, &mode, &uid, &gid, &links, &size, direct, &ind1);
 
@@ -207,15 +207,17 @@ int qrfs_open(const char *path, struct fuse_file_info *fi) {
 
 
 int qrfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+   //Recupera contexto
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
     if (!ctx) return -EIO;
 
     u32 inode_id = (u32)fi->fh;
-
+//Lee el resgotro de 128 bytes del inodo desde la tabla de inodos
     unsigned char raw[128];
     if (read_inode_block(ctx, inode_id, raw) != 0) return -EIO;
 
     inode node;
+    //Desearliza para consultar campos
     inode_deserialize128(raw, &node.inode_number, &node.inode_mode,
                          &node.user_id, &node.group_id, &node.links_quaintities,
                          &node.inode_size, node.direct, &node.indirect1);
@@ -223,25 +225,25 @@ int qrfs_read(const char *path, char *buf, size_t size, off_t offset, struct fus
     if ((node.inode_mode & S_IFMT) != S_IFREG) return -EISDIR;
     if ((u32)offset >= node.inode_size) return 0;
     if (offset + size > node.inode_size) size = node.inode_size - offset;
-
+//Progreso
     size_t bytes_read = 0;
     size_t remaining = size;
     size_t current_offset = offset;
-
+//Primer bloque de datos a leer
     u32 start_block = current_offset / ctx->block_size;
     u32 block_offset = current_offset % ctx->block_size;
 
     unsigned char *block = (unsigned char*)calloc(1, ctx->block_size);
     if (!block) return -ENOMEM;
-
+//Recorre bloques directos del indoo empiza en Start_block
     for (u32 i = start_block; i < 12 && remaining > 0; i++) {
         if (node.direct[i] == 0) break;
-
+//Leer el bloque de datos
         if (read_block(ctx->folder, node.direct[i], block, ctx->block_size) != 0) {
             free(block);
             return -EIO;
         }
-
+//Ver cuantos vamos a leer
         size_t to_read = ctx->block_size - block_offset;
         if (to_read > remaining) to_read = remaining;
 
@@ -256,7 +258,7 @@ int qrfs_read(const char *path, char *buf, size_t size, off_t offset, struct fus
 
     now_timespec(&node.last_access_time);
     write_inode(ctx, inode_id, &node);
-
+//Los retorna
     return bytes_read;
 }
 
@@ -352,15 +354,16 @@ int qrfs_write(const char *path, const char *buf, size_t size, off_t offset, str
 
 
 
-int find_dir_entry_in_block(const unsigned char *blk, u32 block_size,
-                                   const char *name, u32 *inode_id_out,
-                                   u32 *offset_out)
+int find_dir_entry_in_block(const unsigned char *blk, u32 block_size,const char *name, u32 *inode_id_out,u32 *offset_out)
 {
     u32 offset = 0;
     while (offset + sizeof(dir_entry) <= block_size) {
+      //Leer entrada desde el vbloque en el offset actual
         u32 inode_tmp = 0;
         char name_tmp[256] = {0};
         direntry_read(blk, offset, &inode_tmp, name_tmp);
+
+        // Saltar slots vacíos: inode == 0
 
         if (inode_tmp != 0 && strcmp(name_tmp, name) == 0) {
             if (inode_id_out) *inode_id_out = inode_tmp;
@@ -369,6 +372,9 @@ int find_dir_entry_in_block(const unsigned char *blk, u32 block_size,
         }
         offset += sizeof(dir_entry);
     }
+
+    // No se encontró la entrada en este bloque
+
     return -ENOENT;
 }
 
@@ -381,8 +387,7 @@ int qrfs_rename(const char *from, const char *to, unsigned int flags) {
     const char *folder = ctx->folder;
     u32 block_size = ctx->block_size;
 
-    // *** Asumimos un único directorio raíz ***
-    // Normalizamos 'from' y 'to' para extraer solo el basename (sin subdirectorios)
+    // Normalizamos 'from' y 'to' para extraer solo el basename sin subdirectorios porque no los ocupamos
     char from_copy[512];
     strncpy(from_copy, from, sizeof(from_copy));
     from_copy[sizeof(from_copy)-1] = '\0';
@@ -393,7 +398,7 @@ int qrfs_rename(const char *from, const char *to, unsigned int flags) {
     to_copy[sizeof(to_copy)-1] = '\0';
     char *to_name = basename(to_copy);
 
-    // Bloque del directorio raíz (usamos root_direct[0])
+    // Bloque del directorio raíz
     u32 dir_block_index = ctx->root_direct[0];
 
     // Leer bloque del directorio
@@ -413,8 +418,8 @@ int qrfs_rename(const char *from, const char *to, unsigned int flags) {
         return -ENOENT; // no existe el origen
     }
 
-fprintf(stderr, "[RENAME] from='%s' to='%s'\n", from_name, to_name);
-fprintf(stderr, "[RENAME] dir_block=%u\n", dir_block_index);
+	fprintf(stderr, "[RENAME] from='%s' to='%s'\n", from_name, to_name);
+	fprintf(stderr, "[RENAME] dir_block=%u\n", dir_block_index);
 
     // Comprobar si destino ya existe (política: no sobrescribir)
     u32 dst_inode_id = 0, dst_offset = 0;
@@ -424,7 +429,7 @@ fprintf(stderr, "[RENAME] dir_block=%u\n", dir_block_index);
         return -EEXIST;
     }
 
-    // Renombrar in-place: escribir el mismo inode_id con el nuevo nombre en el mismo offset
+    // Renombrar escribiendo el mismo inode_id con el nuevo nombre en el mismo offset
     direntry_write(dir_blk, src_offset, src_inode_id, to_name);
 
     // Persistir bloque de directorio
@@ -434,7 +439,7 @@ fprintf(stderr, "[RENAME] dir_block=%u\n", dir_block_index);
     }
     free(dir_blk);
 
-    // Actualizar ctime del inodo (opcional pero recomendable)
+    // Actualizar ctime del inodo esto no hacer falta si no lo quitamos
     unsigned char raw[128];
     if (read_inode_block(ctx, src_inode_id, raw) == 0) {
         inode node;
@@ -453,13 +458,12 @@ int qrfs_rmdir(const char *path) {
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
     if (!ctx) return -EIO;
 
-    // Proteger raíz por claridad (aunque FUSE normalmente no llama rmdir("/") )
+    // Protegemos raíz nada más porque no hay forma de crear directorios
     if (strcmp(path, "/") == 0) {
         return -EBUSY;  // no se puede borrar la raíz
     }
 
-    // No soportamos directorios (no hay mkdir -> no existen subdirectorios)
-    return -ENOTSUP;    // o -EOPNOTSUPP
+    return -ENOTSUP;
 }
 
 
@@ -473,12 +477,11 @@ int qrfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
     if (!ctx) return -EIO;
 
-    // Solo soportamos raíz por ahora
+    // Solo con raíz
     if (strcmp(path, "/") != 0) {
         return -ENOENT;
     }
 
-    // Emite "." y ".." únicamente, sin enumerar otros nombres
     filler(buf, ".",  NULL, 0, 0);
     filler(buf, "..", NULL, 0, 0);
 
@@ -487,7 +490,7 @@ int qrfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 
 
-
+//Es bastante descriptiva
 static u32 count_free_data_blocks(qrfs_ctx *ctx) {
     u32 free_blocks = 0;
     u32 start = ctx->data_region_start;
@@ -513,30 +516,39 @@ static u32 count_free_inodes(qrfs_ctx *ctx) {
 
 int qrfs_statfs(const char *path, struct statvfs *stbuf) {
     (void)path;
+    //contexto
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
     if (!ctx || !stbuf) return -EIO;
-
+//inicializa de 0
     memset(stbuf, 0, sizeof(*stbuf));
 
     u32 block_size = ctx->block_size;
+
+
+	//Calcular la cantidad total de BLOQUES DE DATOS ,
+
     u32 total_data_blocks = (ctx->total_blocks > ctx->data_region_start)
                           ? (ctx->total_blocks - ctx->data_region_start)
                           : 0;
 
+
+    // Reportar tamaño de bloque y de fragmento (igualamos ambos).
     stbuf->f_bsize  = block_size;
     stbuf->f_frsize = block_size;
-    stbuf->f_blocks = total_data_blocks;
+    stbuf->f_blocks = total_data_blocks; //total de bloques de datos
 
-    u32 free_blocks = count_free_data_blocks(ctx);
+    u32 free_blocks = count_free_data_blocks(ctx); //cuenta libres
     stbuf->f_bfree  = free_blocks;
     stbuf->f_bavail = free_blocks;
 
-    stbuf->f_files  = ctx->total_inodes;
+    stbuf->f_files  = ctx->total_inodes; //numero de inodos
     u32 free_inodes = count_free_inodes(ctx);
     stbuf->f_ffree  = free_inodes;
     stbuf->f_favail = free_inodes;
 
-    stbuf->f_namemax = QRFS_DIR_NAME_MAX - 1; // 255
+    // Longitud máxima de nombres de archivo (excluyendo el byte terminador).
+
+    stbuf->f_namemax = QRFS_DIR_NAME_MAX - 1;
 
     return 0;
 }
@@ -549,9 +561,9 @@ int qrfs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi) {
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
     if (!ctx) return -EIO;
 
-    // Opcional: persistir bitmaps por si hubo cambios recientes
+    // Actualizamos con update bitmaps y ya la funcion se encarga
     if (update_bitmaps(ctx->folder) != 0) return -EIO;
-
+    // Si llegamos aquí,consideramos que la sincronización  está hecha.
     return 0;
 }
 
@@ -562,19 +574,22 @@ int qrfs_access(const char *path, int mask) {
     qrfs_ctx *ctx = (qrfs_ctx *)fuse_get_context()->private_data;
     if (!ctx) return -EIO;
 
+    // Resolver el inodo asociado al path solicitado.
+
     u32 inode_id = 0;
     if (search_inode_by_path(ctx, path, &inode_id) != 0) {
         return -ENOENT;
     }
-
+    // Leer el registro del inodo (128 bytes en el layout de QRFS) desde la tabla de inodos.
     unsigned char raw[128];
     if (read_inode_block(ctx, inode_id, raw) != 0) {
         return -EIO;
     }
 
+    // Deserializar campos del inodo
     u32 ino=0, mode=0, uid=0, gid=0, links=0, size=0, direct[12], ind1=0;
     inode_deserialize128(raw, &ino, &mode, &uid, &gid, &links, &size, direct, &ind1);
-
+	// UID/GID del proceso llamador proporcionados por FUSE
     uid_t caller_uid = fuse_get_context()->uid;
     gid_t caller_gid = fuse_get_context()->gid;
 
@@ -588,7 +603,7 @@ int qrfs_access(const char *path, int mask) {
         perm_triple = (mode & 0007);
     }
 
-    // Evaluar mask
+    // Evaluar mascara solicitada
     if ((mask & R_OK) && !(perm_triple & 04)) return -EACCES;
     if ((mask & W_OK) && !(perm_triple & 02)) return -EACCES;
     if ((mask & X_OK) && !(perm_triple & 01)) return -EACCES;
